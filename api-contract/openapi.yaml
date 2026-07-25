@@ -1,0 +1,146 @@
+openapi: 3.0.3
+info:
+  title: OpenSight API
+  version: "0.1.0"
+  description: >
+    Mock Open Banking API + Alert/Korelasyon yönetimi.
+    Analiz Servisi (Python) bu API'yi çağırarak alert ve korelasyon olaylarını yazar;
+    React Dashboard bu API üzerinden okuma yapar.
+
+servers:
+  - url: http://localhost:8080
+
+paths:
+  /v1/accounts:
+    get:
+      summary: Mock hesap bilgisi sorgusu (Open Banking - account info)
+      parameters:
+        - $ref: '#/components/parameters/ClientIdHeader'
+      responses:
+        "200":
+          description: Hesap listesi
+
+  /v1/payments:
+    post:
+      summary: Mock ödeme başlatma (Open Banking - payment initiation)
+      parameters:
+        - $ref: '#/components/parameters/ClientIdHeader'
+      responses:
+        "201":
+          description: Ödeme başlatıldı
+
+  /api/alerts:
+    get:
+      summary: Son alert'leri listeler (FR5)
+      parameters:
+        - name: take
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Alert listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AlertListItem' }
+    post:
+      summary: Analiz Servisi'nin ürettiği yeni alert'i kaydeder (FR2/FR3)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAlertRequest' }
+      responses:
+        "201":
+          description: Alert oluşturuldu
+
+  /api/alerts/summary:
+    get:
+      summary: Dashboard üst metrik kartları (Şekil 5)
+      responses:
+        "200":
+          description: Özet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardSummary' }
+
+  /api/alerts/correlations:
+    post:
+      summary: İki alert'i birleşik korelasyon olayı olarak işaretler (FR4)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCorrelationEventRequest' }
+      responses:
+        "200":
+          description: Korelasyon olayı oluşturuldu
+
+  /api/alerts/{alertId}/acknowledge:
+    post:
+      summary: Alert'i onayla (Şekil 6 aksiyon butonu)
+      parameters:
+        - name: alertId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Onaylandı }
+
+  /api/alerts/{alertId}/silence:
+    post:
+      summary: Alert'i sessize al (Şekil 6 aksiyon butonu)
+      parameters:
+        - name: alertId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Sessize alındı }
+
+components:
+  parameters:
+    ClientIdHeader:
+      name: X-Client-Id
+      in: header
+      required: true
+      schema: { type: string }
+
+  schemas:
+    CreateAlertRequest:
+      type: object
+      required: [clientId, type, severity]
+      properties:
+        clientId: { type: string }
+        type: { type: string, enum: [Performans, Davranışsal] }
+        severity: { type: string, enum: [Düşük, Orta, Yüksek] }
+        description: { type: string, nullable: true }
+        zScore: { type: number, nullable: true }
+        anomalyScore: { type: number, nullable: true }
+        requestRatePct: { type: number, nullable: true }
+        relatedEndpoint: { type: string, nullable: true }
+
+    CreateCorrelationEventRequest:
+      type: object
+      required: [performanceAlertId, behavioralAlertId]
+      properties:
+        performanceAlertId: { type: string }
+        behavioralAlertId: { type: string }
+
+    AlertListItem:
+      type: object
+      properties:
+        alertId: { type: string }
+        clientId: { type: string }
+        type: { type: string }
+        severity: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    DashboardSummary:
+      type: object
+      properties:
+        activeAlertCount: { type: integer }
+        correlationEventCount: { type: integer }
+        averageLatencyMs: { type: number }
+        activeClientCount: { type: integer }
