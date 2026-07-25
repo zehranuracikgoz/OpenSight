@@ -1,0 +1,62 @@
+version: "3.9"
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "OpenSight!2026"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"  # management UI
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
+  api:
+    build:
+      context: ./backend/src/OpenSight.Api
+    depends_on:
+      - sqlserver
+      - rabbitmq
+    ports:
+      - "8080:8080"
+    environment:
+      ConnectionStrings__OpenSightDb: "Server=sqlserver,1433;Database=OpenSightDb;User Id=sa;Password=OpenSight!2026;TrustServerCertificate=True;"
+      RabbitMq__HostName: "rabbitmq"
+
+  analysis-service:
+    build:
+      context: ./analysis-service
+    depends_on:
+      - rabbitmq
+      - redis
+      - ollama
+      - api
+    ports:
+      - "8001:8001"
+    environment:
+      OPENSIGHT_API_URL: "http://api:8080"
+      REDIS_HOST: "redis"
+      RABBITMQ_HOST: "rabbitmq"
+      OLLAMA_URL: "http://ollama:11434/api/generate"
+
+volumes:
+  sqlserver-data:
+  ollama-data:
