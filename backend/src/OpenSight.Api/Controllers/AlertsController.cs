@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using OpenSight.Application.DTOs;
+using OpenSight.Application.Exceptions;
 using OpenSight.Application.Interfaces;
 
 namespace OpenSight.Api.Controllers;
@@ -17,16 +18,30 @@ public class AlertsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateAlert([FromBody] CreateAlertRequest request, CancellationToken ct)
     {
-        var alertId = await _alertService.CreateAlertAsync(request, ct);
-        return CreatedAtAction(nameof(GetRecent), new { }, new { alertId });
+        try
+        {
+            var alertId = await _alertService.CreateAlertAsync(request, ct);
+            return CreatedAtAction(nameof(GetRecent), new { }, new { alertId });
+        }
+        catch (ValidationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     /// aynı client için aynı anda tetiklenen iki alarmı birleştiren uç nokta
     [HttpPost("correlations")]
     public async Task<IActionResult> CreateCorrelation([FromBody] CreateCorrelationEventRequest request, CancellationToken ct)
     {
-        var correlationId = await _alertService.CreateCorrelationEventAsync(request, ct);
-        return Ok(new { correlationId });
+        try
+        {
+            var correlationId = await _alertService.CreateCorrelationEventAsync(request, ct);
+            return Ok(new { correlationId });
+        }
+        catch (ValidationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpGet]

@@ -11,9 +11,7 @@ import time
 
 import pika
 
-from app.services.cold_start import ColdStartManager
-from app.services.performance_detector import RollingZScoreDetector
-from app.services.traffic_window import ClientTrafficWindow
+from app.services.anomaly_pipeline import AnomalyPipeline
 
 logger = logging.getLogger("opensight.consumer")
 
@@ -22,19 +20,10 @@ RECONNECT_DELAY_SECONDS = 5
 
 
 class RabbitMqTrafficConsumer:
-    def __init__(
-        self,
-        host: str,
-        performance_detector: RollingZScoreDetector,
-        traffic_window: ClientTrafficWindow,
-        cold_start: ColdStartManager,
-        port: int = 5672,
-    ):
+    def __init__(self, host: str, pipeline: AnomalyPipeline, port: int = 5672):
         self.host = host
         self.port = port
-        self.performance_detector = performance_detector
-        self.traffic_window = traffic_window
-        self.cold_start = cold_start
+        self.pipeline = pipeline
         self._stopping = False
         self._connection: pika.BlockingConnection | None = None
 
@@ -88,7 +77,4 @@ class RabbitMqTrafficConsumer:
             logger.warning("parse edilemeyen trafik mesajı atlandı (%s): %r", exc, body)
             return
 
-        now = time.time()
-        self.performance_detector.update_and_score(client_id, latency_ms)
-        feature_vector = self.traffic_window.record(client_id, endpoint, latency_ms, now)
-        self.cold_start.handle(feature_vector)
+        self.pipeline.process(client_id, endpoint, latency_ms, time.time())

@@ -1,7 +1,9 @@
 """
 uçtan uca entegrasyon testi: gerçek RabbitMQ + Redis container'ları (testcontainers) ile,
 backend'in yayınladığı formatta bir TrafficEvent mesajı publish edip RabbitMqTrafficConsumer'ın
-bunu gerçekten tükettiğini, Redis'e yazdığını ve cold start akışının çalıştığını doğruluyor.
+bunu gerçekten tükettiğini, Redis'e yazdığını, cold start akışının ve anomali tetiklendiğinde
+backend'e (mock'lanmış) yazma çağrısının çalıştığını doğruluyor. Backend'in kendisi mock'lanıyor
+- gerçek bir ASP.NET Core sunucusu bu testte ayağa kaldırılmıyor (bkz. rapor notu).
 birim testlerinden ayrı dosyada - Docker gerektirir, CI'da ayrı çalıştırılabilir.
 """
 from __future__ import annotations
@@ -9,6 +11,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from unittest.mock import MagicMock
 
 import pika
 import pytest
@@ -16,8 +19,10 @@ from testcontainers.community.rabbitmq import RabbitMqContainer
 from testcontainers.community.redis import RedisContainer
 
 from app.messaging.rabbitmq_consumer import EXCHANGE_NAME, RabbitMqTrafficConsumer
+from app.services.anomaly_pipeline import AnomalyPipeline
 from app.services.behavioral_detector import BehavioralAnomalyDetector
 from app.services.cold_start import ColdStartManager
+from app.services.correlation_engine import CorrelationEngine
 from app.services.performance_detector import RollingZScoreDetector
 from app.services.traffic_window import ClientTrafficWindow
 
@@ -59,15 +64,17 @@ def pipeline(rabbitmq_container, redis_container):
     behavioral_detector = BehavioralAnomalyDetector()
     traffic_window = ClientTrafficWindow(redis_client, window_seconds=60)
     cold_start = ColdStartManager(redis_client, behavioral_detector, cold_start_seconds=90)
+    correlation_engine = CorrelationEngine(window_seconds=1800)
+    backend_client = MagicMock()
+    backend_client.post_alert.return_value = "alert-stub"
+    backend_client.post_correlation.return_value = "corr-stub"
+
+    anomaly_pipeline = AnomalyPipeline(
+        performance_detector, behavioral_detector, traffic_window, cold_start, correlation_engine, backend_client
+    )
 
     connection_params = rabbitmq_container.get_connection_params()
-    consumer = RabbitMqTrafficConsumer(
-        connection_params.host,
-        performance_detector,
-        traffic_window,
-        cold_start,
-        port=connection_params.port,
-    )
+    consumer = RabbitMqTrafficConsumer(connection_params.host, anomaly_pipeline, port=connection_params.port)
 
     thread = threading.Thread(target=consumer.run_forever, daemon=True)
     thread.start()
@@ -80,6 +87,7 @@ def pipeline(rabbitmq_container, redis_container):
         "behavioral_detector": behavioral_detector,
         "traffic_window": traffic_window,
         "cold_start": cold_start,
+        "backend_client": backend_client,
     }
 
     consumer.stop()
@@ -145,3 +153,26 @@ def test_cold_start_finishes_and_trains_model_once_window_elapses(pipeline):
 
     assert _wait_until(lambda: cold_start.is_ready() is True)
     assert behavioral_detector._is_fitted is True
+
+
+def test_performance_anomaly_through_real_queue_posts_alert_to_backend(pipeline):
+    backend_client = pipeline["backend_client"]
+    connection_params = pipeline["connection_params"]
+    redis_client = pipeline["redis"]
+    backend_client.reset_mock()
+
+    baseline_latencies = [44, 46, 45, 47, 45, 46, 44, 47, 45, 46]  # doğal varyanslı baseline (std=0 z-score'u anlamsızlaştırır)
+    _publish_events(connection_params, [("client_v", "/v1/accounts", lat) for lat in baseline_latencies])
+    assert _wait_until(lambda: redis_client.llen("zscore:window:client_v") >= len(baseline_latencies))
+    _publish_events(connection_params, [("client_v", "/v1/accounts", 5000)])
+
+    # bu noktada cold start önceki testte tamamlanmış olabilir, baseline mesajlarından biri
+    # bile davranışsal anomali olarak işaretlenip erken bir post_alert çağrısı yapmış olabilir -
+    # bu yüzden "herhangi bir çağrı" yerine özellikle "Performans" tipli çağrıyı bekliyoruz
+    def _has_performance_alert():
+        return any(c.args[1] == "Performans" for c in backend_client.post_alert.call_args_list)
+
+    assert _wait_until(_has_performance_alert)
+    performance_calls = [c for c in backend_client.post_alert.call_args_list if c.args[1] == "Performans"]
+    assert len(performance_calls) >= 1
+    assert performance_calls[0].args[0] == "client_v"

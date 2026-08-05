@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using OpenSight.Application.DTOs;
+using OpenSight.Application.Exceptions;
 using OpenSight.Application.Interfaces;
 using OpenSight.Domain.Entities;
 using OpenSight.Infrastructure.Persistence;
@@ -14,6 +15,21 @@ public class AlertService : IAlertService
 
     public async Task<string> CreateAlertAsync(CreateAlertRequest request, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(request.ClientId))
+            throw new ValidationException("clientId boş olamaz");
+
+        AlertType type;
+        AlertSeverity severity;
+        try
+        {
+            type = Enum.Parse<AlertType>(request.Type == "Davranışsal" ? "Davranissal" : request.Type);
+            severity = Enum.Parse<AlertSeverity>(MapSeverity(request.Severity));
+        }
+        catch (ArgumentException)
+        {
+            throw new ValidationException($"geçersiz type/severity: type={request.Type}, severity={request.Severity}");
+        }
+
         var client = await _db.Clients.FindAsync(new object?[] { request.ClientId }, ct);
         if (client is null)
         {
@@ -28,8 +44,8 @@ public class AlertService : IAlertService
         var alert = new Alert
         {
             ClientId = request.ClientId,
-            Type = Enum.Parse<AlertType>(request.Type == "Davranışsal" ? "Davranissal" : request.Type),
-            Severity = Enum.Parse<AlertSeverity>(MapSeverity(request.Severity)),
+            Type = type,
+            Severity = severity,
             Description = request.Description,
             ZScore = request.ZScore,
             AnomalyScore = request.AnomalyScore,
@@ -44,6 +60,14 @@ public class AlertService : IAlertService
 
     public async Task<string> CreateCorrelationEventAsync(CreateCorrelationEventRequest request, CancellationToken ct = default)
     {
+        var performanceAlert = await _db.Alerts.FindAsync(new object?[] { request.PerformanceAlertId }, ct);
+        if (performanceAlert is null)
+            throw new ValidationException($"performanceAlertId bulunamadı: {request.PerformanceAlertId}");
+
+        var behavioralAlert = await _db.Alerts.FindAsync(new object?[] { request.BehavioralAlertId }, ct);
+        if (behavioralAlert is null)
+            throw new ValidationException($"behavioralAlertId bulunamadı: {request.BehavioralAlertId}");
+
         var correlation = new CorrelationEvent
         {
             PerformanceAlertId = request.PerformanceAlertId,
