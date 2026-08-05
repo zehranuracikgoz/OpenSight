@@ -1,7 +1,7 @@
 """
 BehavioralAnomalyDetector: client bazlı özellik vektörleri üzerinde Isolation Forest
 ile davranışsal anomali tespiti - model yalnızca 'normal' baseline verisiyle ilk kez
-eğitilir, sonrasında periyodik yeniden eğitilir (cold start)
+eğitiliyor, sonrasında periyodik yeniden eğitiliyor (cold start)
 """
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ class BehavioralAnomalyDetector:
 
     def score(self, feature_vector: list[float]) -> BehavioralScoreResult:
         if not self._is_fitted or self._model is None:
-            # model henüz eğitilmedi, cold start sırasında anomali işaretlenmez
+            # model henüz eğitilmedi, cold start sırasında anomali işaretlenmiyor
             return BehavioralScoreResult(anomaly_score=0.0, is_anomaly=False)
 
         X = np.array([feature_vector])

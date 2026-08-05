@@ -1,6 +1,6 @@
 """
 CorrelationEngine: aynı istemci için eş zamanlı tetiklenen performans + davranışsal
-anomaliyi birleşik bir olay olarak işaretler - zaman penceresi varsayılan 30 dakika
+anomaliyi birleşik bir olay olarak işaretliyor - zaman penceresi varsayılan 30 dakika
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ class CorrelationEngine:
     def register_alert(self, alert: PendingAlert) -> CorrelationResult | None:
         """
         yeni alert'i kaydediyor, aynı istemci için pencere içinde zıt türde bekleyen
-        bir alert varsa korelasyon üretiyor, yoksa none döner
+        bir alert varsa korelasyon üretiyor, yoksa none dönüyor
         """
         bucket = self._pending.setdefault(alert.client_id, [])
 

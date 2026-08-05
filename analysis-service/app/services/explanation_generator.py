@@ -1,6 +1,6 @@
 """
 ExplanationGenerator: ham anomali skorlarını insan diline çeviren açıklamalar üretiyor -
-veri yerel Ollama'da işleniyr, buluta gönderilmiyor; Ollama 3sn içinde yanıt vermezse
+veri yerel Ollama'da işleniyor, buluta gönderilmiyor; Ollama 3sn içinde yanıt vermezse
 kural tabanlı şablona düşüyor
 """
 from __future__ import annotations
