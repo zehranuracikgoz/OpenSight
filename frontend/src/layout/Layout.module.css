@@ -1,0 +1,28 @@
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  background-color: #111827;
+  color: #f9fafb;
+}
+
+.title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.envBadge {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background-color: #374151;
+  color: #d1d5db;
+}
+
+.content {
+  padding: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
