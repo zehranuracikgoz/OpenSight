@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getDashboardSummary, getRecentAlerts } from '../api/client';
 import type { AlertListItem, DashboardSummary } from '../api/types';
 import { AlertsTable } from '../components/AlertsTable';
+import { CorrelationDetailPanel } from '../components/CorrelationDetailPanel';
 import { LatencyChart } from '../components/LatencyChart';
 import { MetricCard } from '../components/MetricCard';
 import styles from './Dashboard.module.css';
@@ -11,6 +12,7 @@ export function Dashboard() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [alerts, setAlerts] = useState<AlertListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
 
   useEffect(() => {
     getDashboardSummary()
@@ -37,7 +39,11 @@ export function Dashboard() {
       </div>
 
       <LatencyChart />
-      <AlertsTable alerts={alerts} />
+      <AlertsTable alerts={alerts} onSelectAlert={setSelectedAlertId} />
+
+      {selectedAlertId && (
+        <CorrelationDetailPanel alertId={selectedAlertId} onClose={() => setSelectedAlertId(null)} />
+      )}
     </div>
   );
 }

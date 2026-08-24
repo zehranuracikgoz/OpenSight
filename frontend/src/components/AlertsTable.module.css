@@ -24,6 +24,14 @@
   color: #111827;
 }
 
+.clickableRow {
+  cursor: pointer;
+}
+
+.clickableRow:hover {
+  background-color: #f9fafb;
+}
+
 .badge {
   display: inline-block;
   padding: 0.15rem 0.55rem;

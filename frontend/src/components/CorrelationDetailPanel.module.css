@@ -1,0 +1,132 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(17, 24, 39, 0.4);
+  z-index: 10;
+}
+
+.panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: 460px;
+  max-width: 100%;
+  background-color: #ffffff;
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15);
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  animation: slideIn 0.2s ease-out;
+  overflow-y: auto;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.headerTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.closeButton {
+  border: none;
+  background: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.sectionTitle {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin: 0 0 0.5rem 0;
+}
+
+.description {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #374151;
+}
+
+.metrics {
+  display : grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.metricLabel {
+  font-size: 0.75rem;
+  color: #6b7280;
+  display: block;
+}
+
+.metricValue {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.actions {
+  display:flex;
+  gap: 0.75rem;
+  padding : 1rem 1.25rem;
+  border-top: 1px solid #e5e7eb;
+  margin-top: auto;
+}
+
+.actionButton {
+  flex: 1;
+  padding: 0.6rem;
+  border-radius: 0.4rem;
+  border: 1px solid #d1d5db;
+  background-color: #f9fafb;
+  font-size: 0.9rem;
+  cursor : pointer;
+}
+
+.actionButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.acknowledge {
+  border-color: #34d399;
+  color: #047857;
+}
+
+.silence {
+  border-color: #fbbf24;
+  color: #b45309;
+}
+
+.mockNote {
+  font-size: 0.7rem;
+  color: #9ca3af;
+  font-style: italic;
+  margin: 0.25rem 0 0 0;
+}

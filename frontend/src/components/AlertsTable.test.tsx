@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 import type { AlertListItem } from '../api/types';
 import { AlertsTable } from './AlertsTable';
 
@@ -33,6 +34,15 @@ describe('AlertsTable', () => {
     // +1 başlık satırı
     expect(screen.getAllByRole('row')).toHaveLength(sampleAlerts.length + 1);
     expect(screen.getByText('client_a')).toBeInTheDocument();
-    expect(screen.getByText ('client_b')).toBeInTheDocument();
+    expect(screen.getByText('client_b')).toBeInTheDocument();
+  });
+
+  it('bir satıra tıklanınca onSelectAlert doğru id ile çağrılıyor', async () => {
+    const onSelectAlert = vi.fn();
+    render(<AlertsTable alerts={sampleAlerts} onSelectAlert={onSelectAlert} />);
+
+    await userEvent.click(screen.getByText('client_b'));
+
+    expect(onSelectAlert).toHaveBeenCalledWith('2');
   });
 });

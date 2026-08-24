@@ -4,6 +4,7 @@ import { EmptyState } from './EmptyState';
 
 interface AlertsTableProps {
   alerts: AlertListItem[];
+  onSelectAlert?: (alertId: string) => void;
 }
 
 const TYPE_CLASS: Record<string, string> = {
@@ -23,7 +24,7 @@ function formatTimestamp(iso: string): string {
 }
 
 // son alarmları listeliyor, hiç alarm yoksa EmptyState'e düşecek(ayrı bir sayfa yok, koşullu render
-export function AlertsTable({ alerts }: AlertsTableProps) {
+export function AlertsTable({ alerts, onSelectAlert }: AlertsTableProps) {
   if (alerts.length === 0) {
     return <EmptyState />;
   }
@@ -40,7 +41,11 @@ export function AlertsTable({ alerts }: AlertsTableProps) {
       </thead>
       <tbody>
         {alerts.map((alert) => (
-          <tr key={alert.alertId}>
+          <tr
+            key={alert.alertId}
+            className={onSelectAlert ? styles.clickableRow : undefined}
+            onClick={() => onSelectAlert?.(alert.alertId)}
+          >
             <td>{alert.clientId}</td>
             <td>
               <span className={`${styles.badge} ${TYPE_CLASS[alert.type] ?? ''}`}>{alert.type}</span>
