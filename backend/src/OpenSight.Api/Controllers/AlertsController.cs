@@ -52,6 +52,14 @@ public class AlertsController : ControllerBase
     public async Task<ActionResult<DashboardSummaryDto>> GetSummary(CancellationToken ct)
         => Ok(await _alertService.GetDashboardSummaryAsync(ct));
 
+    /// tek bir alert'in tüm detayını dönüyor (detay paneli için) - "summary" literal'i bu route'tan önce eşleşir
+    [HttpGet("{alertId}")]
+    public async Task<ActionResult<AlertDetailDto>> GetById(string alertId, CancellationToken ct)
+    {
+        var alert = await _alertService.GetAlertByIdAsync(alertId, ct);
+        return alert is null ? NotFound() : Ok(alert);
+    }
+
     [HttpPost("{alertId}/acknowledge")]
     public async Task<IActionResult> Acknowledge(string alertId, CancellationToken ct)
     {

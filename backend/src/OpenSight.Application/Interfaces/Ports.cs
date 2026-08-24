@@ -14,6 +14,7 @@ public interface IAlertService
     Task<string> CreateAlertAsync(CreateAlertRequest request, CancellationToken ct = default);
     Task<string> CreateCorrelationEventAsync(CreateCorrelationEventRequest request, CancellationToken ct = default);
     Task<IReadOnlyList<AlertListItemDto>> GetRecentAlertsAsync(int take = 50, CancellationToken ct = default);
+    Task<AlertDetailDto?> GetAlertByIdAsync(string alertId, CancellationToken ct = default);
     Task<DashboardSummaryDto> GetDashboardSummaryAsync(CancellationToken ct = default);
     Task AcknowledgeAsync(string alertId, CancellationToken ct = default);
     Task SilenceAsync(string alertId, CancellationToken ct = default);

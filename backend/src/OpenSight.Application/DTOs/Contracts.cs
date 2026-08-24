@@ -34,3 +34,20 @@ public record AlertListItemDto(
     string Severity,
     DateTime CreatedAt
 );
+
+/// detay panelinin ihtiyaç duyduğu tüm alanlar - ham metrikler, açıklama, onay/sessize durumu, varsa korelasyon
+public record AlertDetailDto(
+    string AlertId,
+    string ClientId,
+    string Type,
+    string Severity,
+    DateTime CreatedAt,
+    string? Description,
+    double? ZScore,
+    double? AnomalyScore,
+    double? RequestRatePct,
+    string? RelatedEndpoint,
+    bool Acknowledged,
+    bool Silenced,
+    string? CorrelationId
+);

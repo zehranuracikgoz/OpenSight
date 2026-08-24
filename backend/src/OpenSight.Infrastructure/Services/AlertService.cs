@@ -80,11 +80,40 @@ public class AlertService : IAlertService
 
     public async Task<IReadOnlyList<AlertListItemDto>> GetRecentAlertsAsync(int take = 50, CancellationToken ct = default)
     {
-        return await _db.Alerts
+        var alerts = await _db.Alerts
             .OrderByDescending(a => a.CreatedAt)
             .Take(take)
-            .Select(a => new AlertListItemDto(a.AlertId, a.ClientId, a.Type.ToString(), a.Severity.ToString(), a.CreatedAt))
             .ToListAsync(ct);
+
+        return alerts
+            .Select(a => new AlertListItemDto(a.AlertId, a.ClientId, TypeLabel(a.Type), SeverityLabel(a.Severity), a.CreatedAt))
+            .ToList();
+    }
+
+    public async Task<AlertDetailDto?> GetAlertByIdAsync(string alertId, CancellationToken ct = default)
+    {
+        var alert = await _db.Alerts.FindAsync(new object?[] { alertId }, ct);
+        if (alert is null) return null;
+
+        // bu alert bir korelasyon olayına dahil mi diye kontrol ediyor
+        var correlation = await _db.CorrelationEvents
+            .FirstOrDefaultAsync(c => c.PerformanceAlertId == alertId || c.BehavioralAlertId == alertId, ct);
+
+        return new AlertDetailDto(
+            alert.AlertId,
+            alert.ClientId,
+            TypeLabel(alert.Type),
+            SeverityLabel(alert.Severity),
+            alert.CreatedAt,
+            alert.Description,
+            alert.ZScore,
+            alert.AnomalyScore,
+            alert.RequestRatePct,
+            alert.RelatedEndpoint,
+            alert.Acknowledged,
+            alert.Silenced,
+            correlation?.CorrelationId
+        );
     }
 
     public async Task<DashboardSummaryDto> GetDashboardSummaryAsync(CancellationToken ct = default)
@@ -122,5 +151,19 @@ public class AlertService : IAlertService
         "Orta" => "Orta",
         "Yüksek" => "Yuksek",
         _ => severity
+    };
+
+    // enum adları ASCII (Davranissal/Dusuk/Yuksek), dashboard'a Türkçe etiketlerle dönüyor
+    private static string TypeLabel(AlertType type) => type switch
+    {
+        AlertType.Davranissal => "Davranışsal",
+        _ => "Performans"
+    };
+
+    private static string SeverityLabel(AlertSeverity severity) => severity switch
+    {
+        AlertSeverity.Dusuk => "Düşük",
+        AlertSeverity.Yuksek => "Yüksek",
+        _ => "Orta"
     };
 }

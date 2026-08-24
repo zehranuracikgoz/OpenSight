@@ -103,4 +103,55 @@ public class AlertsControllerTests
         Assert.Equal(1, summary.ActiveAlertCount);
         Assert.Equal(1, summary.ActiveClientCount);
     }
+
+    [Fact]
+    public async Task GetById_ExistingAlert_ReturnsAllRawMetrics()
+    {
+        var db = CreateInMemoryDb();
+        var service = new AlertService(db);
+        var alertId = await service.CreateAlertAsync(
+            new CreateAlertRequest("client_4", "Davranışsal", "Yüksek", "test açıklaması", null, 0.92, 18.5, "/v1/payments"));
+        var controller = new AlertsController(service);
+
+        var result = await controller.GetById(alertId, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var detail =Assert.IsType<AlertDetailDto>(ok.Value);
+        Assert.Equal("client_4", detail.ClientId);
+        Assert.Equal("Davranışsal", detail.Type); // ASCII enum değil, Türkçe etiket dönmeli
+        Assert.Equal("Yüksek", detail.Severity);
+        Assert.Equal(0.92, detail.AnomalyScore);
+        Assert.Equal(18.5, detail.RequestRatePct);
+        Assert.Equal("/v1/payments", detail.RelatedEndpoint) ;
+        Assert.False(detail.Acknowledged);
+        Assert.Null(detail.CorrelationId);
+    }
+
+    [Fact]
+    public async Task GetById_NonExistentAlert_ReturnsNotFound()
+    {
+        var db = CreateInMemoryDb();
+        var controller = new AlertsController(new AlertService(db));
+
+        var result = await controller.GetById("yok", CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task GetById_CorrelatedAlert_IncludesCorrelationId()
+    {
+        var db = CreateInMemoryDb();
+        var service = new AlertService(db);
+        var perfId = await service.CreateAlertAsync(new CreateAlertRequest("client_5", "Performans", "Orta", null, 3.5, null, null, null));
+        var behId = await service.CreateAlertAsync(new CreateAlertRequest("client_5", "Davranışsal", "Orta", null, null, 0.8, null, null));
+        await service.CreateCorrelationEventAsync(new CreateCorrelationEventRequest(perfId, behId));
+        var controller = new AlertsController(service);
+
+        var result = await controller.GetById(perfId, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var detail = Assert.IsType<AlertDetailDto>(ok.Value);
+        Assert.NotNull(detail.CorrelationId);
+    }
 }
