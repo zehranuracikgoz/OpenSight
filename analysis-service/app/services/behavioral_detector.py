@@ -6,6 +6,7 @@ eğitiliyor, sonrasında periyodik yeniden eğitiliyor (cold start)
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import numpy as np
 from sklearn.ensemble import IsolationForest
@@ -32,6 +33,7 @@ class BehavioralAnomalyDetector:
         self.random_state = random_state
         self._model: IsolationForest | None = None
         self._is_fitted = False
+        self.last_trained_at: str | None= None
 
     def fit(self, baseline_features: list[list[float]]) -> None:
         """cold start sonrası toplanan 'sadece normal' veriyle ilk eğitim"""
@@ -39,6 +41,7 @@ class BehavioralAnomalyDetector:
         self._model = IsolationForest(contamination=self.contamination, random_state=self.random_state)
         self._model.fit(X)
         self._is_fitted = True
+        self.last_trained_at = datetime.now(timezone.utc).isoformat()
 
     def retrain(self, recent_features: list[list[float]]) -> None:
         """periyodik yeniden eğitim"""

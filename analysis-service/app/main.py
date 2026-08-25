@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import os
 import threading
+from dataclasses import asdict
 
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from redis import Redis
 
 from app.messaging.backend_client import BackendClient
@@ -21,6 +22,7 @@ from app.services.cold_start import ColdStartManager
 from app.services.correlation_engine import CorrelationEngine
 from app.services.explanation_generator import ExplanationGenerator
 from app.services.performance_detector import RollingZScoreDetector
+from app.services.threshold_settings import ThresholdSettingsService
 from app.services.traffic_window import ClientTrafficWindow
 
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
@@ -41,9 +43,11 @@ cold_start = ColdStartManager(redis_client, behavioral_detector, cold_start_seco
 correlation_engine = CorrelationEngine(window_seconds=30 * 60)
 explanation_generator = ExplanationGenerator()
 backend_client = BackendClient(BACKEND_URL)
+threshold_settings = ThresholdSettingsService(redis_client, performance_detector, behavioral_detector)
 
 anomaly_pipeline = AnomalyPipeline(
-    performance_detector, behavioral_detector, traffic_window, cold_start, correlation_engine, backend_client
+    performance_detector, behavioral_detector, traffic_window, cold_start, correlation_engine, backend_client,
+    threshold_settings=threshold_settings,
 )
 traffic_consumer = RabbitMqTrafficConsumer(RABBITMQ_HOST, anomaly_pipeline, port=RABBITMQ_PORT)
 _consumer_thread: threading.Thread | None = None
@@ -83,3 +87,28 @@ def score_latency(sample: LatencySample) -> dict:
         "mean": result.mean,
         "std": result.std,
     }
+
+
+class ThresholdSettingsResponse(BaseModel):
+    z_score_threshold: float
+    contamination: float
+    last_trained_at: str | None
+    alert_counts_last_24h: dict[str, int]
+
+
+class UpdateThresholdSettingsRequest(BaseModel):
+    z_score_threshold: float | None =Field(default=None, gt=0)
+    contamination: float | None = Field(default=None, gt=0, le=0.5)
+
+
+@app.get("/settings/thresholds", response_model=ThresholdSettingsResponse)
+def get_threshold_settings()-> ThresholdSettingsResponse:
+    """Z-Score eşiğini, contamination oranını, son 24 saatteki alarm sayısını ve son eğitim zamanını döndürüyor"""
+    return ThresholdSettingsResponse(**asdict(threshold_settings.get_settings()))
+
+
+@app.put("/settings/thresholds", response_model=ThresholdSettingsResponse)
+def update_threshold_settings(request: UpdateThresholdSettingsRequest) -> ThresholdSettingsResponse:
+    """yeni eşikleri canlı detector'lara uyguluyor ve Redis'e kalıcı olarak yazıyor"""
+    settings = threshold_settings.update_settings(request.z_score_threshold, request.contamination)
+    return ThresholdSettingsResponse(**asdict(settings ))

@@ -12,6 +12,7 @@ from app.services.behavioral_detector import BehavioralAnomalyDetector
 from app.services.cold_start import ColdStartManager
 from app.services.correlation_engine import CorrelationEngine, PendingAlert
 from app.services.performance_detector import RollingZScoreDetector
+from app.services.threshold_settings import ThresholdSettingsService
 from app.services.traffic_window import ClientTrafficWindow
 
 
@@ -40,6 +41,7 @@ class AnomalyPipeline:
         cold_start: ColdStartManager,
         correlation_engine: CorrelationEngine,
         backend_client: BackendClient,
+        threshold_settings: ThresholdSettingsService | None = None,
     ):
         self.performance_detector = performance_detector
         self.behavioral_detector = behavioral_detector
@@ -47,6 +49,7 @@ class AnomalyPipeline:
         self.cold_start = cold_start
         self.correlation_engine = correlation_engine
         self.backend_client = backend_client
+        self.threshold_settings = threshold_settings
 
     def process(self, client_id: str, endpoint: str, latency_ms: float, timestamp: float) -> None:
         """tek bir trafik olayını işliyor - tespit, korelasyon ve backend'e yazma burada birleşiyor"""
@@ -63,6 +66,8 @@ class AnomalyPipeline:
             )
             if alert_id:
                 pending.append(("Performans", alert_id))
+                if self.threshold_settings:
+                    self.threshold_settings.record_alert("Performans")
 
         if self.cold_start.is_ready():
             behavioral_result = self.behavioral_detector.score(feature_vector)
@@ -73,6 +78,8 @@ class AnomalyPipeline:
                 )
                 if alert_id:
                     pending.append(("Davranışsal", alert_id))
+                    if self.threshold_settings:
+                        self.threshold_settings.record_alert("Davranışsal")
 
         alert_time = datetime.fromtimestamp(timestamp, tz=timezone.utc)
         for alert_type, alert_id in pending:
