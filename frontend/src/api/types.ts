@@ -31,3 +31,17 @@ export interface AlertDetail {
   silenced: boolean;
   correlationId: string | null;
 }
+
+// analiz servisinin (Python/FastAPI) döndürdüğü alan adları snake_case - .NET backend'in
+// camelCase'inden farklı, çünkü bu endpoint OpenSight.Api değil analysis-service tarafından sunuluyor
+export interface ThresholdSettings {
+  z_score_threshold: number;
+  contamination:number;
+  last_trained_at: string | null;
+  alert_counts_last_24h: Record<string, number>;
+}
+
+export interface UpdateThresholdSettingsPayload {
+  z_score_threshold?: number;
+  contamination?:number;
+}

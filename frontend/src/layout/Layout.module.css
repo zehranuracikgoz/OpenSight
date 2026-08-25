@@ -13,6 +13,26 @@
   margin: 0;
 }
 
+.nav {
+  display: flex;
+  gap:1rem;
+  margin-right: auto;
+}
+
+.navLink {
+  color: #d1d5db;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.navLink:hover {
+  color: #f9fafb;
+}
+
+.navLinkActive {
+  color: #f9fafb;
+  font-weight: 600;
+}
+
 .envBadge {
   font-size: 0.75rem;
   padding: 0.15rem 0.5rem;
