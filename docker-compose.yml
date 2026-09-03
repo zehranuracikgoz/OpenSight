@@ -31,7 +31,10 @@ services:
 
   api:
     build:
-      context: ./backend/src/OpenSight.Api
+      # context ./backend'e ayarli çünkü Dockerfile Domain/Application/Infrastructure/Api'nin
+      # hepsini kopyalamak zorunda - bu 4 proje birbirine ProjectReference ile bagli
+      context: ./backend
+      dockerfile: src/OpenSight.Api/Dockerfile
     depends_on:
       - sqlserver
       - rabbitmq
@@ -56,6 +59,20 @@ services:
       REDIS_HOST: "redis"
       RABBITMQ_HOST: "rabbitmq"
       OLLAMA_URL: "http://ollama:11434/api/generate"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Vite bunlari build sirasinda statik dosyalara gomuyor - tarayicida calisacagi icin
+        # container-ici servis adlari degil, host'tan erisilebilir adresler olmali
+        VITE_API_URL: "http://localhost:8080"
+        VITE_ANALYSIS_SERVICE_URL: "http://localhost:8001"
+    depends_on:
+      - api
+      - analysis-service
+    ports:
+      - "5173:80"
 
 volumes:
   sqlserver-data:

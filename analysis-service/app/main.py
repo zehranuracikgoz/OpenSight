@@ -11,6 +11,7 @@ import threading
 from dataclasses import asdict
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from redis import Redis
 
@@ -31,8 +32,18 @@ RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "localhost")
 RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", "5672"))
 COLD_START_SECONDS = int(os.environ.get("COLD_START_SECONDS", "90"))
 BACKEND_URL = os.environ.get("OPENSIGHT_API_URL", "http://localhost:8080")
+DASHBOARD_ORIGIN = os.environ.get("DASHBOARD_ORIGIN", "http://localhost:5173")
 
 app = FastAPI(title="OpenSight Analiz Servisi", version="0.1.0")
+
+# dashboard'un dogrudan tarayicidan (fetch ile) esik ayarlari endpoint'lerine erisebilmesi icin -
+# backend'deki Cors:DashboardOrigin yaklasimiyla ayni mantik
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[DASHBOARD_ORIGIN],
+    allow_methods= ["*"],
+    allow_headers= ["*"],
+)
 
 redis_client = Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 
