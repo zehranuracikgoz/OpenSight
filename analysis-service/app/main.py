@@ -69,7 +69,6 @@ threshold_settings = ThresholdSettingsService(redis_client, performance_detector
 anomaly_pipeline = AnomalyPipeline(
     performance_detector, behavioral_detector, traffic_window, cold_start, correlation_engine, backend_client,
     threshold_settings=threshold_settings,
-    explanation_generator=explanation_generator,
 )
 traffic_consumer = RabbitMqTrafficConsumer(RABBITMQ_HOST, anomaly_pipeline, port=RABBITMQ_PORT, uri=RABBITMQ_URI or None)
 _consumer_thread: threading.Thread | None = None
