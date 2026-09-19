@@ -20,9 +20,10 @@ RECONNECT_DELAY_SECONDS = 5
 
 
 class RabbitMqTrafficConsumer:
-    def __init__(self, host: str, pipeline: AnomalyPipeline, port: int = 5672):
+    def __init__(self, host: str, pipeline: AnomalyPipeline, port: int = 5672, uri: str | None = None):
         self.host = host
         self.port = port
+        self.uri = uri
         self.pipeline = pipeline
         self._stopping = False
         self._connection: pika.BlockingConnection | None = None
@@ -50,9 +51,12 @@ class RabbitMqTrafficConsumer:
                 time.sleep(RECONNECT_DELAY_SECONDS)
 
     def _connect_and_consume(self) -> None:
-        self._connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host=self.host, port=self.port, heartbeat=0)
+        # uri verilmisse (CloudAMQP gibi amqps://user:pass@host/vhost) onu kullaniyor,
+        # yoksa host/port'tan eski usul ConnectionParameters kuruyor (yerel gelistirme)
+        parameters = pika.URLParameters(self.uri) if self.uri else pika.ConnectionParameters(
+            host=self.host, port=self.port, heartbeat=0
         )
+        self._connection = pika.BlockingConnection(parameters)
         try:
             channel = self._connection.channel()
             channel.exchange_declare(exchange=EXCHANGE_NAME, exchange_type="fanout", durable=True)
@@ -60,7 +64,10 @@ class RabbitMqTrafficConsumer:
             queue_name = queue.method.queue
             channel.queue_bind(exchange=EXCHANGE_NAME, queue=queue_name)
 
-            logger.info("RabbitMQ'ya bağlandı (%s), %s exchange'i dinleniyor", self.host, EXCHANGE_NAME)
+            logger.info(
+                "RabbitMQ'ya bağlandı (%s), %s exchange'i dinleniyor",
+                self.uri or self.host, EXCHANGE_NAME,
+            )
             channel.basic_consume(queue=queue_name, on_message_callback=self._on_message, auto_ack=True)
             channel.start_consuming()
         finally:

@@ -26,13 +26,18 @@ from app.services.performance_detector import RollingZScoreDetector
 from app.services.threshold_settings import ThresholdSettingsService
 from app.services.traffic_window import ClientTrafficWindow
 
+REDIS_URL = os.environ.get("REDIS_URL", "")
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
+RABBITMQ_URI = os.environ.get("RABBITMQ_URI", "")
 RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "localhost")
 RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", "5672"))
 COLD_START_SECONDS = int(os.environ.get("COLD_START_SECONDS", "90"))
 BACKEND_URL = os.environ.get("OPENSIGHT_API_URL", "http://localhost:8080")
-DASHBOARD_ORIGIN = os.environ.get("DASHBOARD_ORIGIN", "http://localhost:5173")
+# Render'da CORS_ORIGIN olarak girildi, yerelde/docker-compose'da hala DASHBOARD_ORIGIN kullaniliyor
+DASHBOARD_ORIGIN = os.environ.get("CORS_ORIGIN") or os.environ.get("DASHBOARD_ORIGIN", "http://localhost:5173")
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:1b")
 
 app = FastAPI(title="OpenSight Analiz Servisi", version="0.1.0")
 
@@ -45,22 +50,28 @@ app.add_middleware(
     allow_headers= ["*"],
 )
 
-redis_client = Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+# REDIS_URL verilmisse (Upstash gibi rediss:// TLS URL'i) from_url TLS'i de otomatik parse ediyor,
+# yoksa eski host/port fallback'i (yerel gelistirme / docker-compose) kullaniliyor
+if REDIS_URL:
+    redis_client = Redis.from_url(REDIS_URL, decode_responses=True)
+else:
+    redis_client = Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 
 performance_detector = RollingZScoreDetector(redis_client, window_size=50, threshold=3.2)
 behavioral_detector = BehavioralAnomalyDetector(contamination=0.05)
 traffic_window = ClientTrafficWindow(redis_client)
 cold_start = ColdStartManager(redis_client, behavioral_detector, cold_start_seconds=COLD_START_SECONDS)
 correlation_engine = CorrelationEngine(window_seconds=30 * 60)
-explanation_generator = ExplanationGenerator()
+explanation_generator = ExplanationGenerator(ollama_url=OLLAMA_URL, model=OLLAMA_MODEL)
 backend_client = BackendClient(BACKEND_URL)
 threshold_settings = ThresholdSettingsService(redis_client, performance_detector, behavioral_detector)
 
 anomaly_pipeline = AnomalyPipeline(
     performance_detector, behavioral_detector, traffic_window, cold_start, correlation_engine, backend_client,
     threshold_settings=threshold_settings,
+    explanation_generator=explanation_generator,
 )
-traffic_consumer = RabbitMqTrafficConsumer(RABBITMQ_HOST, anomaly_pipeline, port=RABBITMQ_PORT)
+traffic_consumer = RabbitMqTrafficConsumer(RABBITMQ_HOST, anomaly_pipeline, port=RABBITMQ_PORT, uri=RABBITMQ_URI or None)
 _consumer_thread: threading.Thread | None = None
 
 

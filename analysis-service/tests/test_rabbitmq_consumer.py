@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
+import pika
+
 from app.messaging.rabbitmq_consumer import EXCHANGE_NAME, RECONNECT_DELAY_SECONDS, RabbitMqTrafficConsumer
 
 
@@ -43,6 +45,28 @@ def test_connect_and_consume_uses_correct_host_port_and_exchange():
         queue="test-queue", on_message_callback=consumer._on_message, auto_ack=True
     )
     mock_channel.start_consuming.assert_called_once()
+
+
+def test_connect_and_consume_uses_uri_when_provided():
+    """CloudAMQP gibi amqps://user:pass@host/vhost verildiginde host/port yerine
+    pika.URLParameters kullanilmali"""
+    pipeline = MagicMock()
+    uri = "amqps://user:password@host.rmq.cloudamqp.com/vhost"
+    consumer = RabbitMqTrafficConsumer("ignored-host", pipeline, port=5673, uri=uri)
+    mock_channel =_make_mock_channel()
+    mock_connection = MagicMock()
+    mock_connection.channel.return_value = mock_channel
+
+    with patch(
+        "app.messaging.rabbitmq_consumer.pika.BlockingConnection", return_value=mock_connection
+    ) as mock_blocking:
+        consumer._connect_and_consume()
+
+    connection_params= mock_blocking.call_args[0][0]
+    assert isinstance(connection_params, pika.URLParameters)
+    assert connection_params.host ==  "host.rmq.cloudamqp.com"
+    assert connection_params.virtual_host == "vhost"
+    assert connection_params.credentials.username == "user"
 
 
 def test_on_message_parses_valid_payload_and_calls_pipeline():
