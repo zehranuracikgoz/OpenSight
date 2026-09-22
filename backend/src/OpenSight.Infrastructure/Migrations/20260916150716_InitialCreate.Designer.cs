@@ -2,9 +2,9 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OpenSight.Infrastructure.Persistence;
 
 #nullable disable
@@ -12,7 +12,7 @@ using OpenSight.Infrastructure.Persistence;
 namespace OpenSight.Infrastructure.Migrations
 {
     [DbContext(typeof(OpenSightDbContext))]
-    [Migration("20260720190812_InitialCreate")]
+    [Migration("20260916150716_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -20,53 +20,53 @@ namespace OpenSight.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.8")
-                .HasAnnotation("Relational:MaxIdentifierLength", 128);
+                .HasAnnotation("ProductVersion", "8.0.10")
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
-            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("OpenSight.Domain.Entities.Alert", b =>
                 {
                     b.Property<string>("AlertId")
-                        .HasColumnType("nvarchar(450)");
+                        .HasColumnType("text");
 
                     b.Property<bool>("Acknowledged")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<double?>("AnomalyScore")
-                        .HasColumnType("float");
+                        .HasColumnType("double precision");
 
                     b.Property<string>("ClientId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("Description")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Description ")
+                        .HasColumnType("text ");
 
                     b.Property<string>("RelatedEndpoint")
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("text");
 
                     b.Property<double?>("RequestRatePct")
-                        .HasColumnType("float");
+                        .HasColumnType("double precision");
 
                     b.Property<string>("Severity")
                         .IsRequired()
                         .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)");
+                        .HasColumnType("character varying(16)");
 
                     b.Property<bool>("Silenced")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
+                        .HasColumnType("character varying(32)");
 
                     b.Property<double?>("ZScore")
-                        .HasColumnType("float");
+                        .HasColumnType("double precision");
 
                     b.HasKey("AlertId");
 
@@ -78,13 +78,13 @@ namespace OpenSight.Infrastructure.Migrations
             modelBuilder.Entity("OpenSight.Domain.Entities.Client", b =>
                 {
                     b.Property<string>("ClientId")
-                        .HasColumnType("nvarchar(450)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("FirstSeen")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("LastSeen")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("ClientId");
 
@@ -94,18 +94,18 @@ namespace OpenSight.Infrastructure.Migrations
             modelBuilder.Entity("OpenSight.Domain.Entities.CorrelationEvent", b =>
                 {
                     b.Property<string>("CorrelationId")
-                        .HasColumnType("nvarchar(450)");
+                        .HasColumnType("text");
 
                     b.Property<string>("BehavioralAlertId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("DetectedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PerformanceAlertId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                        .HasColumnType("text");
 
                     b.HasKey("CorrelationId");
 
@@ -150,7 +150,7 @@ namespace OpenSight.Infrastructure.Migrations
                 {
                     b.Navigation("Alerts");
                 });
-#pragma warning restore 612, 618
+#pragma warning restore 612,618
         }
     }
 }

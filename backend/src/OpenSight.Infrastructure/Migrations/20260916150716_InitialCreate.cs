@@ -15,9 +15,9 @@ namespace OpenSight.Infrastructure.Migrations
                 name: "Client",
                 columns: table => new
                 {
-                    ClientId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    FirstSeen = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    LastSeen = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    ClientId = table.Column<string>(type: "text", nullable: false),
+                    FirstSeen = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    LastSeen = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -28,18 +28,18 @@ namespace OpenSight.Infrastructure.Migrations
                 name: "Alert",
                 columns: table => new
                 {
-                    AlertId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    ClientId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    Type = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
-                    Severity = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    ZScore = table.Column<double>(type: "float", nullable: true),
-                    AnomalyScore = table.Column<double>(type: "float", nullable: true),
-                    RequestRatePct = table.Column<double>(type: "float", nullable: true),
-                    RelatedEndpoint = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Acknowledged = table.Column<bool>(type: "bit", nullable: false),
-                    Silenced = table.Column<bool>(type: "bit", nullable: false)
+                    AlertId = table.Column<string>(type: "text", nullable: false),
+                    ClientId = table.Column<string>(type: "text", nullable: false),
+                    Type = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
+                    Severity = table.Column<string>(type: "character varying(16)",maxLength: 16, nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    Description = table.Column<string>(type: "text", nullable: true),
+                    ZScore = table.Column<double>(type: "double precision", nullable: true),
+                    AnomalyScore = table.Column<double>(type: "double precision", nullable: true),
+                    RequestRatePct = table.Column<double>(type: "double precision", nullable: true),
+                    RelatedEndpoint = table.Column<string>(type: "text", nullable: true),
+                    Acknowledged = table.Column<bool>(type: "boolean", nullable: false),
+                    Silenced = table.Column<bool>(type: "boolean", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -56,10 +56,10 @@ namespace OpenSight.Infrastructure.Migrations
                 name: "CorrelationEvent",
                 columns: table => new
                 {
-                    CorrelationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    PerformanceAlertId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    BehavioralAlertId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    DetectedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    CorrelationId = table.Column<string>(type: "text", nullable: false),
+                    PerformanceAlertId = table.Column<string>(type: "text", nullable: false),
+                    BehavioralAlertId = table.Column<string>(type: "text", nullable: false),
+                    DetectedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {

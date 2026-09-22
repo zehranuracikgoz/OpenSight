@@ -1,15 +1,16 @@
 version: "3.9"
 
 services:
-  sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+  postgres:
+    image: postgres:16-alpine
     environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "OpenSight!2026"
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "OpenSight!2026"
+      POSTGRES_DB: "OpenSightDb"
     ports:
-      - "1433:1433"
+      - "5432:5432"
     volumes:
-      - sqlserver-data:/var/opt/mssql
+      - postgres-data:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
@@ -24,6 +25,7 @@ services:
 
   ollama:
     image: ollama/ollama:latest
+    profiles: ["ollama"]
     ports:
       - "11434:11434"
     volumes:
@@ -36,13 +38,14 @@ services:
       context: ./backend
       dockerfile: src/OpenSight.Api/Dockerfile
     depends_on:
-      - sqlserver
+      - postgres
       - rabbitmq
     ports:
       - "8080:8080"
     environment:
-      ConnectionStrings__OpenSightDb: "Server=sqlserver,1433;Database=OpenSightDb;User Id=sa;Password=OpenSight!2026;TrustServerCertificate=True;"
+      ConnectionStrings__OpenSightDb: "Host=postgres;Port=5432;Database=OpenSightDb;Username=postgres;Password=OpenSight!2026"
       RabbitMq__HostName: "rabbitmq"
+      Cors__DashboardOrigin: "http://localhost:8090"
 
   analysis-service:
     build:
@@ -50,8 +53,10 @@ services:
     depends_on:
       - rabbitmq
       - redis
-      - ollama
       - api
+      # ollama kasitli olarak burada yok - ExplanationGenerator zaten 3sn timeout + sablon
+      # fallback ile calisiyor, ollama profili acilmadan analysis-service'in ayakta olmasi
+      # gerekiyor (dusuk bellekli makinelerde varsayilan olarak kapali tutulabilsin diye)
     ports:
       - "8001:8001"
     environment:
@@ -59,6 +64,8 @@ services:
       REDIS_HOST: "redis"
       RABBITMQ_HOST: "rabbitmq"
       OLLAMA_URL: "http://ollama:11434/api/generate"
+      OLLAMA_MODEL: "llama3.2:1b"
+      DASHBOARD_ORIGIN: "http://localhost:8090"
 
   frontend:
     build:
@@ -72,8 +79,8 @@ services:
       - api
       - analysis-service
     ports:
-      - "5173:80"
+      - "8090:80"
 
 volumes:
-  sqlserver-data:
+  postgres-data:
   ollama-data:

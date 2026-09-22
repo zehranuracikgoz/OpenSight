@@ -1,67 +1,89 @@
-﻿-- bu dosya 'dotnet ef migrations script' ile üretildi
+﻿-- bu dosya 'dotnet ef migrations script' ile üretildi (PostgreSQL)
 -- şema değişiklikleri Domain entity'leri + yeni migration'lar üzerinden yapılmalı
-IF OBJECT_ID(N'[__EFMigrationsHistory]') IS NULL
+CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+    "MigrationId" character varying(150) NOT NULL,
+    "ProductVersion" character varying(32) NOT NULL,
+    CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId")
+);
+
+START TRANSACTION;
+
+
+DO $EF$
 BEGIN
-    CREATE TABLE [__EFMigrationsHistory] (
-        [MigrationId] nvarchar(150) NOT NULL,
-        [ProductVersion] nvarchar(32) NOT NULL,
-        CONSTRAINT [PK___EFMigrationsHistory] PRIMARY KEY ([MigrationId])
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260916150716_InitialCreate') THEN
+    CREATE TABLE "Client" (
+        "ClientId" text NOT NULL,
+        "FirstSeen" timestamp with time zone NOT NULL,
+        "LastSeen" timestamp with time zone NOT NULL,
+        CONSTRAINT "PK_Client" PRIMARY KEY ("ClientId")
     );
-END;
-GO
+    END IF;
+END $EF$;
 
-BEGIN TRANSACTION;
-GO
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260916150716_InitialCreate') THEN
+    CREATE TABLE "Alert" (
+        "AlertId" text NOT NULL,
+        "ClientId" text NOT NULL,
+        "Type" character varying(32) NOT NULL,
+        "Severity" character varying(16) NOT NULL,
+        "CreatedAt" timestamp with time zone NOT NULL,
+        "Description" text,
+        "ZScore" double precision,
+        "AnomalyScore" double precision,
+        "RequestRatePct" double precision,
+        "RelatedEndpoint" text,
+        "Acknowledged" boolean NOT NULL,
+        "Silenced" boolean NOT NULL,
+        CONSTRAINT "PK_Alert" PRIMARY KEY ("AlertId"),
+        CONSTRAINT "FK_Alert_Client_ClientId" FOREIGN KEY ("ClientId") REFERENCES "Client" ("ClientId") ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
 
-CREATE TABLE [Client] (
-    [ClientId] nvarchar(450) NOT NULL,
-    [FirstSeen] datetime2 NOT NULL,
-    [LastSeen] datetime2 NOT NULL,
-    CONSTRAINT [PK_Client] PRIMARY KEY ([ClientId])
-);
-GO
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260916150716_InitialCreate') THEN
+    CREATE TABLE "CorrelationEvent" (
+        "CorrelationId" text NOT NULL,
+        "PerformanceAlertId" text NOT NULL,
+        "BehavioralAlertId" text NOT NULL,
+        "DetectedAt" timestamp with time zone NOT NULL,
+        CONSTRAINT "PK_CorrelationEvent" PRIMARY KEY ("CorrelationId"),
+        CONSTRAINT "FK_CorrelationEvent_Alert_BehavioralAlertId" FOREIGN KEY ("BehavioralAlertId") REFERENCES "Alert" ("AlertId") ON DELETE RESTRICT,
+        CONSTRAINT "FK_CorrelationEvent_Alert_PerformanceAlertId" FOREIGN KEY ("PerformanceAlertId") REFERENCES "Alert" ("AlertId") ON DELETE RESTRICT
+    );
+    END IF;
+END $EF$;
 
-CREATE TABLE [Alert] (
-    [AlertId] nvarchar(450) NOT NULL,
-    [ClientId] nvarchar(450) NOT NULL,
-    [Type] nvarchar(32) NOT NULL,
-    [Severity] nvarchar(16) NOT NULL,
-    [CreatedAt] datetime2 NOT NULL,
-    [Description] nvarchar(max) NULL,
-    [ZScore] float NULL,
-    [AnomalyScore] float NULL,
-    [RequestRatePct] float NULL,
-    [RelatedEndpoint] nvarchar(max) NULL,
-    [Acknowledged] bit NOT NULL,
-    [Silenced] bit NOT NULL,
-    CONSTRAINT [PK_Alert] PRIMARY KEY ([AlertId]),
-    CONSTRAINT [FK_Alert_Client_ClientId] FOREIGN KEY ([ClientId]) REFERENCES [Client] ([ClientId]) ON DELETE CASCADE
-);
-GO
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260916150716_InitialCreate') THEN
+    CREATE INDEX "IX_Alert_ClientId_CreatedAt" ON "Alert" ("ClientId", "CreatedAt");
+    END IF;
+END $EF$;
 
-CREATE TABLE [CorrelationEvent] (
-    [CorrelationId] nvarchar(450) NOT NULL,
-    [PerformanceAlertId] nvarchar(450) NOT NULL,
-    [BehavioralAlertId] nvarchar(450) NOT NULL,
-    [DetectedAt] datetime2 NOT NULL,
-    CONSTRAINT [PK_CorrelationEvent] PRIMARY KEY ([CorrelationId]),
-    CONSTRAINT [FK_CorrelationEvent_Alert_BehavioralAlertId] FOREIGN KEY ([BehavioralAlertId]) REFERENCES [Alert] ([AlertId]) ON DELETE NO ACTION,
-    CONSTRAINT [FK_CorrelationEvent_Alert_PerformanceAlertId] FOREIGN KEY ([PerformanceAlertId]) REFERENCES [Alert] ([AlertId]) ON DELETE NO ACTION
-);
-GO
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260916150716_InitialCreate') THEN
+    CREATE INDEX "IX_CorrelationEvent_BehavioralAlertId" ON "CorrelationEvent" ("BehavioralAlertId");
+    END IF;
+END $EF$;
 
-CREATE INDEX [IX_Alert_ClientId_CreatedAt] ON [Alert] ([ClientId], [CreatedAt]);
-GO
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260916150716_InitialCreate') THEN
+    CREATE INDEX "IX_CorrelationEvent_PerformanceAlertId" ON "CorrelationEvent" ("PerformanceAlertId");
+    END IF;
+END $EF$;
 
-CREATE INDEX [IX_CorrelationEvent_BehavioralAlertId] ON [CorrelationEvent] ([BehavioralAlertId]);
-GO
-
-CREATE INDEX [IX_CorrelationEvent_PerformanceAlertId] ON [CorrelationEvent] ([PerformanceAlertId]);
-GO
-
-INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
-VALUES (N'20260720190812_InitialCreate', N'8.0.8');
-GO
-
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260916150716_InitialCreate') THEN
+    INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+    VALUES ('20260916150716_InitialCreate', '8.0.10');
+    END IF;
+END $EF$;
 COMMIT;
-GO
