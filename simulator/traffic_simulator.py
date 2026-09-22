@@ -79,12 +79,10 @@ class TrafficSimulator:
             for profile in self._active_profiles():
                 for i in range(n_clients_per_profile):
                     client_id = make_client_id(profile, i)
+                    endpoint = pick_endpoint(profile)
                     rate = request_rate_for(profile)
-                    if random.random() < min(rate / 10.0, 1.0):
-                        endpoint = pick_endpoint(profile)
-                        yield client_id, profile, endpoint, rate
-            yield from ()
-            time.sleep(0.5)
+                    yield client_id, profile, endpoint, rate
+            time.sleep(1.0)
 
     def send_request(self, client_id: str, endpoint: str) -> None:
         method = requests.post if "payments" in endpoint else requests.get
@@ -99,10 +97,12 @@ class TrafficSimulator:
             f.write(json.dumps(asdict(record), ensure_ascii=False) + "\n")
 
     def run(self, n_clients_per_profile: int = 3) -> None:
-        print(f"[simulator] başlıyor -> {self.base_url} (cold start: {self.cold_start_seconds}s)")
-        for client_id, profile, endpoint, _rate in self.generate(n_clients_per_profile):
+        print(f"[simulator] başlıyor -> {self.base_url} (cold start: {self.cold_start_seconds}s)", flush=True)
+        for client_id, profile, endpoint, rate in self.generate(n_clients_per_profile):
+            print(f"[simulator] {client_id} -> {endpoint} ({profile.value})", flush=True)
             self.send_request(client_id, endpoint)
             self.log_ground_truth(client_id, profile)
+            time.sleep(1.0 / max(rate, 0.1))
 
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
