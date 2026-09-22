@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import time
 import uuid
@@ -104,7 +105,10 @@ class TrafficSimulator:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="OpenSight trafik simülatörü")
-    parser.add_argument("--base-url", default="http://localhost:8080")
+    parser.add_argument(
+        "--base-url",
+        default=os.environ.get("OPENSIGHT_API_URL", "http://localhost:8080"),
+    )
     parser.add_argument("--ground-truth-path", default="ground_truth.log")
     parser.add_argument("--cold-start-seconds", type=int, default=90)
     parser.add_argument("--clients-per-profile", type=int, default=3)
