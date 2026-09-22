@@ -8,11 +8,13 @@ import argparse
 import json
 import os
 import random
+import threading
 import time
 import uuid
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from enum import Enum
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Iterator
 
 import requests
@@ -103,6 +105,24 @@ class TrafficSimulator:
             self.log_ground_truth(client_id, profile)
 
 
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        if self.path in ("/", "/health"):
+            body = json.dumps({"status": "healthy"}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type" , "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format: str, *args) -> None:
+        pass
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="OpenSight trafik simülatörü")
     parser.add_argument(
@@ -115,7 +135,13 @@ def main() -> None:
     args = parser.parse_args()
 
     sim = TrafficSimulator(args.base_url, args.ground_truth_path, args.cold_start_seconds)
-    sim.run(args.clients_per_profile)
+    sim_thread = threading.Thread(target=sim.run, args=(args.clients_per_profile,), daemon=True)
+    sim_thread.start()
+
+    port = int(os.environ.get("PORT", "10000"))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    print(f"[simulator] health check sunucusu -> 0.0.0.0:{port}")
+    server.serve_forever()
 
 
 if __name__ == "__main__":
