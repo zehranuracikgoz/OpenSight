@@ -16,9 +16,9 @@ public class RabbitMqTrafficEventPublisher : ITrafficEventPublisher, IDisposable
     private readonly IConnection _connection;
     private readonly IModel _channel;
 
-    public RabbitMqTrafficEventPublisher(string hostName)
+    public RabbitMqTrafficEventPublisher(string uri)
     {
-        var factory = new ConnectionFactory { HostName = hostName, DispatchConsumersAsync = true };
+        var factory = new ConnectionFactory { Uri = new Uri(uri), DispatchConsumersAsync = true };
         _connection = factory.CreateConnection();
         _channel = _connection.CreateModel();
         _channel.ExchangeDeclare(ExchangeName, ExchangeType.Fanout, durable: true);

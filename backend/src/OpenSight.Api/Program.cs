@@ -12,7 +12,7 @@ builder.Services.AddDbContext<OpenSightDbContext>(options =>
 
 // RabbitMQ bağlantısı
 builder.Services.AddSingleton<ITrafficEventPublisher>(_ =>
-    new RabbitMqTrafficEventPublisher(builder.Configuration["RabbitMq:HostName"] ?? "localhost"));
+    new RabbitMqTrafficEventPublisher(builder.Configuration["RabbitMQ:Uri"] ?? "amqp://localhost"));
 
 // iş mantığı servisleri
 builder.Services.AddScoped<IAlertService, AlertService>();
