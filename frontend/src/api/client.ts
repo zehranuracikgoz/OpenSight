@@ -1,7 +1,7 @@
 import type {
   AlertDetail,
-  AlertListItem,
   DashboardSummary,
+  PagedAlerts,
   ThresholdSettings,
   UpdateThresholdSettingsPayload,
 } from './types';
@@ -43,12 +43,12 @@ async function postAction(path: string): Promise<void> {
   }
 }
 
-export function getDashboardSummary(): Promise<DashboardSummary> {
-  return getJson<DashboardSummary>('/api/alerts/summary');
+export function getDashboardSummary(hours = 24): Promise<DashboardSummary> {
+  return getJson<DashboardSummary>(`/api/alerts/summary?hours=${hours}`);
 }
 
-export function getRecentAlerts(take =50): Promise<AlertListItem[]> {
-  return getJson<AlertListItem[]>(`/api/alerts?take=${take}`);
+export function getRecentAlerts(take = 50, skip = 0, hours = 24): Promise<PagedAlerts> {
+  return getJson<PagedAlerts>(`/api/alerts?take=${take}&skip=${skip}&hours=${hours}`);
 }
 
 export function getAlertById(alertId: string): Promise<AlertDetail> {

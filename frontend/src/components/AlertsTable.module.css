@@ -1,27 +1,28 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  overflow : hidden;
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
 }
 
 .table th {
   text-align: left;
   font-size: 0.75rem;
   text-transform: uppercase;
-  color: #6b7280;
-  padding: 0.6rem 1rem;
-  background-color: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
+  color: var(--color-text-secondary);
+  padding: 0.75rem 1.25rem;
+  background-color: var(--color-table-header-bg);
+  border-bottom: 1px solid var(--color-card-border);
 }
 
 .table td {
-  padding: 0.6rem 1rem;
+  padding: 0.75rem 1.25rem;
   font-size: 0.9rem;
-  border-bottom: 1px solid #f3f4f6;
-  color: #111827;
+  border-bottom: 1px solid var(--color-card-border);
+  color: var(--color-text-primary);
 }
 
 .clickableRow {
@@ -29,7 +30,7 @@
 }
 
 .clickableRow:hover {
-  background-color: #f9fafb;
+  background-color: var(--color-row-hover);
 }
 
 .badge {

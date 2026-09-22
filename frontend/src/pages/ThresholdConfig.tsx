@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getThresholdSettings, updateThresholdSettings } from '../api/client';
 import type { ThresholdSettings } from '../api/types';
+import { ZScoreDistributionChart } from '../components/ZScoreDistributionChart';
 import styles from './ThresholdConfig.module.css';
 
 const DEFAULT_Z_SCORE_THRESHOLD = 3.2;
@@ -57,9 +58,13 @@ export function ThresholdConfig() {
       {savedMessage && <p className={styles.saved}>{savedMessage}</p>}
 
       <div className={styles.field}>
-        <label htmlFor="zScoreThreshold">Z-Score Eşiği: {zScoreThreshold.toFixed(1)}</label>
+        <label htmlFor="zScoreThreshold">
+          Z-Score Eşiği: <span className={styles.monoValue}>{zScoreThreshold.toFixed(1)}</span>
+        </label>
+        <ZScoreDistributionChart threshold={zScoreThreshold} />
         <input
           id = "zScoreThreshold"
+          className={styles.slider}
           type="range"
           min={1}
           max={6}
@@ -75,10 +80,12 @@ export function ThresholdConfig() {
 
       <div className={styles.field}>
         <label htmlFor="contamination">
-          Isolation Forest Contamination Oranı: {contamination.toFixed(2)}
+          Isolation Forest Contamination Oranı:{' '}
+          <span className={styles.monoValue}>{contamination.toFixed(2)}</span>
         </label>
         <input
           id="contamination"
+          className={styles.slider}
           type="range"
           min = {0.01}
           max = {0.5}
@@ -98,8 +105,13 @@ export function ThresholdConfig() {
 
       <div className={styles.info}>
         <p className={styles.sectionTitle}>Son 24 Saatte Üretilen Alarmlar</p>
-        <p>Performans: {settings?.alert_counts_last_24h.Performans ?? '—'}</p>
-        <p>Davranışsal: {settings?.alert_counts_last_24h['Davranışsal'] ?? '—'}</p>
+        <p>
+          Performans: <span className={styles.monoValue}>{settings?.alert_counts_last_24h.Performans ?? '—'}</span>
+        </p>
+        <p>
+          Davranışsal:{' '}
+          <span className={styles.monoValue}>{settings?.alert_counts_last_24h['Davranışsal'] ?? '—'}</span>
+        </p>
         <p className={styles.sectionTitle}>Modelin Son Eğitim Zamanı</p>
         <p>{formatDateTime(settings?.last_trained_at)}</p>
       </div>

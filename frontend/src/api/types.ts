@@ -7,12 +7,20 @@ export interface AlertListItem {
   createdAt: string;
 }
 
-// backend'in DashboardSummaryDto'suyla eşleşiyor
 export interface DashboardSummary {
   activeAlertCount: number;
   correlationEventCount: number;
   averageLatencyMs: number;
   activeClientCount: number;
+  previousActiveAlertCount: number;
+  previousCorrelationEventCount: number;
+  previousActiveClientCount: number;
+}
+
+// backend'in PagedAlertsDto suyla eşleşiyor
+export interface PagedAlerts {
+  items: AlertListItem[];
+  totalCount: number;
 }
 
 // backend'in AlertDetailDto'suyla eşleşiyor - detay panelinin ihtiyaç duyduğu tüm alanlar

@@ -1,16 +1,56 @@
+:root {
+  --color-bg: #f5f1e9;
+  --color-sidebar-bg: #ece7d9;
+  --color-sidebar-active: #878c91;
+  --color-card-bg: #ffffff;
+  --color-card-border: #eeeeee;
+  --color-row-hover: #fcf6eb;
+  --color-table-header-bg: #faf8f3;
+
+  --color-accent:#c97b2e;
+  --color-accent-strong: #dfa73d;
+
+  --color-text-primary: #27344b ;
+  --color-text-secondary: #6b7280;
+  --color-text-on-accent: #ffffff;
+
+  --color-button-primary-bg: #3d4a63;
+  --color-button-primary-text: #ffffff;
+  --color-button-secondary-bg: #ffffff;
+  --color-button-secondary-border: #d1d5db;
+  --color-button-secondary-text: #27344b;
+
+  --color-badge-production-bg: #dce3d5;
+  --color-badge-production-text: #4b5a4a;
+
+  --color-error-bg : #f6e3d8;
+  --color-error-text: #8a4a1f;
+  --color-success-bg: #dde5d3;
+  --color-success-text: #3f5b45;
+
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-panel: -2px 0 14px rgba(0, 0, 0 , 0.08);
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+
+  --font-sans:
+    system-ui,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  --font-mono: ui-monospace,'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family:
-    system-ui,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
-  background-color: #f3f4f6;
-  color: #111827 ;
+  font-family: var(--font-sans);
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
 }
 
 #root {

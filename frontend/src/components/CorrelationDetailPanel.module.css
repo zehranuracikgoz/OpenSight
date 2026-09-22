@@ -1,7 +1,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(17, 24, 39, 0.4);
+  background-color: rgba(39, 52, 75, 0.4);
   z-index: 10;
 }
 
@@ -12,8 +12,8 @@
   height: 100vh;
   width: 460px;
   max-width: 100%;
-  background-color: #ffffff;
-  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15);
+  background-color: var(--color-card-bg);
+  box-shadow: var(--shadow-panel);
   z-index: 11;
   display: flex;
   flex-direction: column;
@@ -34,13 +34,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--color-card-border);
 }
 
 .headerTitle {
   font-size: 1rem;
   font-weight: 600;
+  color: var(--color-text-primary);
   margin: 0;
 }
 
@@ -50,20 +51,20 @@
   font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 }
 
 .body {
-  padding: 1.25rem;
+  padding: 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.5rem;
 }
 
 .sectionTitle {
   font-size: 0.8rem;
   text-transform: uppercase;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin: 0 0 0.5rem 0;
 }
 
@@ -71,42 +72,44 @@
   margin: 0;
   font-size: 0.9rem;
   line-height: 1.5;
-  color: #374151;
+  color: var(--color-text-primary);
 }
 
 .metrics {
   display : grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 .metricLabel {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   display: block;
 }
 
 .metricValue {
+  font-family: var(--font-mono);
   font-size: 1rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--color-text-primary);
 }
 
 .actions {
-  display:flex;
+  display: flex;
   gap: 0.75rem;
-  padding : 1rem 1.25rem;
-  border-top: 1px solid #e5e7eb;
+  padding: 1.25rem 1.5rem;
+  border-top: 1px solid var(--color-card-border);
   margin-top: auto;
 }
 
 .actionButton {
   flex: 1;
-  padding: 0.6rem;
-  border-radius: 0.4rem;
-  border: 1px solid #d1d5db;
-  background-color: #f9fafb;
+  padding: 0.65rem;
+  border-radius : var(--radius-sm);
+  border: 1px solid var(--color-button-secondary-border);
+  background-color: var(--color-button-secondary-bg);
+  color: var(--color-button-secondary-text);
   font-size: 0.9rem;
-  cursor : pointer;
+  cursor: pointer;
 }
 
 .actionButton:disabled {
@@ -115,18 +118,19 @@
 }
 
 .acknowledge {
-  border-color: #34d399;
-  color: #047857;
+  border-color: var(--color-button-primary-bg);
+  background-color: var(--color-button-primary-bg);
+  color: var(--color-button-primary-text);
 }
 
 .silence {
-  border-color: #fbbf24;
-  color: #b45309;
+  border-color:var(--color-button-secondary-border);
+  color: var(--color-button-secondary-text);
 }
 
 .mockNote {
   font-size: 0.7rem;
-  color: #9ca3af;
+  color: var(--color-text-secondary);
   font-style: italic;
   margin: 0.25rem 0 0 0;
 }

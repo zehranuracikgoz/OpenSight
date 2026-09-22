@@ -32,8 +32,10 @@ describe('ThresholdConfig', () => {
 
     expect(await screen.findByLabelText(/Z-Score Eşiği/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Isolation Forest Contamination Oranı/)).toBeInTheDocument();
-    expect(screen.getByText('Performans: 4')).toBeInTheDocument();
-    expect(screen.getByText('Davranışsal: 2')).toBeInTheDocument();
+    // sayı ayrı bir <span> içinde - tam metin tek text node da değil, bu yüzden
+    // fonksiyon matcher kullanıyor
+    expect(screen.getByText((_, el) => el?.textContent === 'Performans: 4')).toBeInTheDocument();
+    expect(screen.getByText((_, el) => el?.textContent === 'Davranışsal: 2')).toBeInTheDocument();
   });
 
   it('kaydet butonu doğru payload ile updateThresholdSettings çağırıyor', async () => {

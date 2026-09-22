@@ -5,13 +5,13 @@
   gap: 0.5rem;
   padding: 3rem 1rem;
   text-align: center ;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 }
 
 .title {
   font-size: 1.1rem;
   font-weight:600;
-  color: #374151;
+  color: var(--color-text-primary);
   margin: 0;
 }
 

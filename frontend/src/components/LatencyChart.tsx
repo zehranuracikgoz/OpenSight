@@ -23,23 +23,22 @@ const correlatedPoints =mockLatencyData
   .filter((point) => point.isCorrelated)
   .map((point) => ({ timestamp: point.timestamp, latencyMs: point.latencyMs }));
 
-// turuncu nokta = performans anomalisi, amber diamond = korelasyonlu olay(mock veri
 export function LatencyChart() {
   return (
     <div className={styles.container}>
       <h2 className={styles.title}>Gecikme (son 30 dakika)</h2>
       <ResponsiveContainer width="100%" height={280}>
         <ComposedChart data = {mockLatencyData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-card-border)" />
           <XAxis dataKey="timestamp" tickFormatter={formatTime} minTickGap={30} />
           <YAxis unit="ms" />
           <Tooltip
             labelFormatter={(value) => formatTime(String(value))}
             formatter={(value) => [`${value} ms`, 'Gecikme']}
           />
-          <Line type="monotone" dataKey="latencyMs" stroke ="#2563eb" dot={false} strokeWidth={2} />
-          <Scatter data={performanceAnomalyPoints} dataKey="latencyMs" fill="#f97316" shape="circle" />
-          <Scatter data= {correlatedPoints} dataKey="latencyMs" fill="#f59e0b" shape="diamond" />
+          <Line type="monotone" dataKey="latencyMs" stroke="var(--color-text-primary)" dot={false} strokeWidth={2} />
+          <Scatter data={performanceAnomalyPoints} dataKey="latencyMs" fill="var(--color-accent)" shape="circle" />
+          <Scatter data={correlatedPoints} dataKey="latencyMs" fill="var(--color-accent-strong)" shape="diamond" />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
