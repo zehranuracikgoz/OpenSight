@@ -6,9 +6,9 @@ using OpenSight.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// veritabanı bağlantısı (SQL Server / Azure SQL)
+// veritabanı bağlantısı (PostgreSQL - Supabase/Render gibi ücretsiz servislerde de çalışsın diye)
 builder.Services.AddDbContext<OpenSightDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("OpenSightDb")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("OpenSightDb")));
 
 // RabbitMQ bağlantısı
 builder.Services.AddSingleton<ITrafficEventPublisher>(_ =>

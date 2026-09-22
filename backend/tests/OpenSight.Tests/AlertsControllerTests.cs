@@ -96,7 +96,7 @@ public class AlertsControllerTests
         await service.CreateAlertAsync(new CreateAlertRequest("client_3", "Performans", "Düşük", null, 1.1, null, null, null));
         var controller = new AlertsController(service);
 
-        var result = await controller.GetSummary(CancellationToken.None);
+        var result = await controller.GetSummary(ct: CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var summary = Assert.IsType<DashboardSummaryDto>(ok.Value);
@@ -153,5 +153,89 @@ public class AlertsControllerTests
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var detail = Assert.IsType<AlertDetailDto>(ok.Value);
         Assert.NotNull(detail.CorrelationId);
+    }
+
+    [Fact]
+    public async Task UpdateDescription_ExistingAlert_UpdatesDescriptionAndReturns204()
+    {
+        var db = CreateInMemoryDb();
+        var service = new AlertService(db);
+        var alertId = await service.CreateAlertAsync(
+            new CreateAlertRequest("client_6", "Performans", "Orta", "şablon açıklama", 4.0, null, null, null));
+        var controller = new AlertsController(service);
+
+        var result = await controller.UpdateDescription(
+            alertId, new UpdateAlertDescriptionRequest("Ollama'nın ürettiği zengin açıklama"), CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.Equal("Ollama'nın ürettiği zengin açıklama", db.Alerts.First(a => a.AlertId == alertId).Description);
+    }
+
+    [Fact]
+    public async Task GetRecent_Pagination_ReturnsRequestedPageAndTotalCount()
+    {
+        var db = CreateInMemoryDb();
+        var service = new AlertService(db);
+        await service.CreateAlertAsync(new CreateAlertRequest("client_7", "Performans", "Orta", null, 1.0, null, null, null));
+        await service.CreateAlertAsync(new CreateAlertRequest("client_7", "Performans", "Orta", null, 1.0, null, null, null));
+        await service.CreateAlertAsync(new CreateAlertRequest("client_7", "Performans", "Orta", null, 1.0, null, null, null));
+        var controller = new AlertsController(service);
+
+        var result = await controller.GetRecent(take: 2, skip: 1);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var paged = Assert.IsType<PagedAlertsDto>(ok.Value);
+        Assert.Equal(3, paged.TotalCount);
+        Assert.Equal(2, paged.Items.Count);
+    }
+
+    [Fact]
+    public async Task GetRecent_HoursFilter_ExcludesAlertsOlderThanWindow()
+    {
+        var db = CreateInMemoryDb();
+        var service = new AlertService(db);
+        var alertId = await service.CreateAlertAsync(new CreateAlertRequest("client_8", "Performans", "Orta", null, 1.0, null, null, null));
+        db.Alerts.First(a => a.AlertId == alertId).CreatedAt = DateTime.UtcNow.AddHours(-30);
+        await db.SaveChangesAsync();
+        var controller = new AlertsController(service);
+
+        var within24h = await controller.GetRecent(hours: 24);
+        var within48h = await controller.GetRecent(hours: 48);
+
+        var okWithin24h = Assert.IsType<OkObjectResult>(within24h.Result);
+        var okWithin48h = Assert.IsType<OkObjectResult>(within48h.Result);
+        Assert.Empty(Assert.IsType<PagedAlertsDto>(okWithin24h.Value).Items);
+        Assert.Single(Assert.IsType<PagedAlertsDto>(okWithin48h.Value).Items);
+    }
+
+    [Fact]
+    public async Task GetSummary_PreviousWindow_CountsOlderAlertsSeparately()
+    {
+        var db = CreateInMemoryDb();
+        var service = new AlertService(db);
+        await service.CreateAlertAsync(new CreateAlertRequest("client_9", "Performans", "Orta", null, 1.0, null, null, null));
+        var olderAlertId = await service.CreateAlertAsync(new CreateAlertRequest("client_9", "Performans", "Orta", null, 1.0, null, null, null));
+        db.Alerts.First(a => a.AlertId == olderAlertId).CreatedAt = DateTime.UtcNow.AddHours(-30);
+        await db.SaveChangesAsync();
+        var controller = new AlertsController(service);
+
+        var result = await controller.GetSummary(hours: 24);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var summary = Assert.IsType<DashboardSummaryDto>(ok.Value);
+        Assert.Equal(1, summary.ActiveAlertCount);
+        Assert.Equal(1, summary.PreviousActiveAlertCount);
+    }
+
+    [Fact]
+    public async Task UpdateDescription_NonExistentAlert_Returns204WithoutThrowing()
+    {
+        var db = CreateInMemoryDb();
+        var controller = new AlertsController(new AlertService(db));
+
+        var result = await controller.UpdateDescription(
+            "yok", new UpdateAlertDescriptionRequest("açıklama"), CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
     }
 }

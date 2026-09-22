@@ -44,13 +44,16 @@ public class AlertsController : ControllerBase
         }
     }
 
+    /// hours verilmezse zaman filtresi uygulanmaz (eski davranışla uyumlu) - dashboard'daki
+    /// zaman aralığı dropdown'u seçtiği pencereye göre hours'u dolduruyor
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<AlertListItemDto>>> GetRecent([FromQuery] int take = 50, CancellationToken ct = default)
-        => Ok(await _alertService.GetRecentAlertsAsync(take, ct));
+    public async Task<ActionResult<PagedAlertsDto>> GetRecent(
+        [FromQuery] int take = 50, [FromQuery] int skip = 0, [FromQuery] int? hours = null, CancellationToken ct = default)
+        => Ok(await _alertService.GetRecentAlertsAsync(take, skip, hours, ct));
 
     [HttpGet("summary")]
-    public async Task<ActionResult<DashboardSummaryDto>> GetSummary(CancellationToken ct)
-        => Ok(await _alertService.GetDashboardSummaryAsync(ct));
+    public async Task<ActionResult<DashboardSummaryDto>> GetSummary([FromQuery] int hours = 24, CancellationToken ct = default)
+        => Ok(await _alertService.GetDashboardSummaryAsync(hours, ct));
 
     /// tek bir alert'in tüm detayını dönüyor (detay paneli için) - "summary" literal'i bu route'tan önce eşleşir
     [HttpGet("{alertId}")]
@@ -71,6 +74,15 @@ public class AlertsController : ControllerBase
     public async Task<IActionResult> Silence(string alertId, CancellationToken ct)
     {
         await _alertService.SilenceAsync(alertId, ct);
+        return NoContent();
+    }
+
+    /// analiz servisinin Ollama'dan gelen daha zengin açıklamayla alert'i arka planda güncellemesi için -
+    /// alert zaten şablon açıklamayla oluşturulmuş olur, bu sadece sonradan iyileştirme yapar
+    [HttpPatch("{alertId}/description")]
+    public async Task<IActionResult> UpdateDescription(string alertId, [FromBody] UpdateAlertDescriptionRequest request, CancellationToken ct)
+    {
+        await _alertService.UpdateDescriptionAsync(alertId, request.Description, ct);
         return NoContent();
     }
 }

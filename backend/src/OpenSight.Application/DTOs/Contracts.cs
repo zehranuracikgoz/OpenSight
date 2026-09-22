@@ -18,12 +18,19 @@ public record CreateAlertRequest(
 /// iki alarmı (performans + davranışsal) birleştirirken
 public record CreateCorrelationEventRequest(string PerformanceAlertId, string BehavioralAlertId);
 
-/// dashboard'daki üst 4 metrik kartının verisi
+/// analiz servisinin Ollama'dan gelen daha zengin açıklamayla alert'i arka planda güncellemesi için
+public record UpdateAlertDescriptionRequest(string Description);
+
+/// dashboard'daki üst 4 metrik kartının verisi - Previous* alanları, aynı büyüklükte hemen
+/// önceki zaman penceresindeki sayım, kartlardaki artış/azalış oku bundan hesaplanıyor
 public record DashboardSummaryDto(
     int ActiveAlertCount,
     int CorrelationEventCount,
     double AverageLatencyMs,
-    int ActiveClientCount
+    int ActiveClientCount,
+    int PreviousActiveAlertCount = 0,
+    int PreviousCorrelationEventCount = 0,
+    int PreviousActiveClientCount = 0
 );
 
 /// alarm listesindeki her satırın şekli için
@@ -34,6 +41,9 @@ public record AlertListItemDto(
     string Severity,
     DateTime CreatedAt
 );
+
+/// sayfalanmış alarm listesi - TotalCount, sayfalama kontrollerinin "X / Y gösteriliyor" metni için
+public record PagedAlertsDto(IReadOnlyList<AlertListItemDto> Items, int TotalCount);
 
 /// detay panelinin ihtiyaç duyduğu tüm alanlar - ham metrikler, açıklama, onay/sessize durumu, varsa korelasyon
 public record AlertDetailDto(
