@@ -22,6 +22,12 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"  # management UI
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 10s
 
   ollama:
     image: ollama/ollama:latest
@@ -44,16 +50,19 @@ services:
       - "8080:8080"
     environment:
       ConnectionStrings__OpenSightDb: "Host=postgres;Port=5432;Database=OpenSightDb;Username=postgres;Password=OpenSight!2026"
-      RabbitMq__HostName: "rabbitmq"
+      RabbitMQ__Uri: "amqp://rabbitmq"
       Cors__DashboardOrigin: "http://localhost:8090"
 
   analysis-service:
     build:
       context: ./analysis-service
     depends_on:
-      - rabbitmq
-      - redis
-      - api
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      api:
+        condition: service_started
       # ollama kasitli olarak burada yok - ExplanationGenerator zaten 3sn timeout + sablon
       # fallback ile calisiyor, ollama profili acilmadan analysis-service'in ayakta olmasi
       # gerekiyor (dusuk bellekli makinelerde varsayilan olarak kapali tutulabilsin diye)
