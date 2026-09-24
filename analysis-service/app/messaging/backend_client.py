@@ -60,6 +60,21 @@ class BackendClient:
             logger.warning("backend'e alarm yazılamadı (client=%s, tür=%s): %s", client_id, alert_type, exc)
             return None
 
+    def patch_alert_description(self, alert_id: str, description: str) -> bool:
+        """ollama'nın ürettiği daha zengin açıklamayla alert'i sonradan güncelliyor -
+        arka plan görevinden çağrılıyor, başarısız olursa hata fırlatmıyor, sadece logluyor"""
+        try:
+            response = httpx.patch(
+                f"{self.base_url}/api/alerts/{alert_id}/description",
+                json={"description": description},
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return True
+        except httpx.HTTPError as exc:
+            logger.warning("alert açıklaması güncellenemedi (alert=%s): %s", alert_id, exc)
+            return False
+
     def post_correlation(self, performance_alert_id: str, behavioral_alert_id: str) -> str | None:
         """iki alarmı backend'de tek bir korelasyon olayı olarak birleştiriyor"""
         payload = {"performanceAlertId": performance_alert_id, "behavioralAlertId": behavioral_alert_id}

@@ -84,3 +84,25 @@ def test_warmup_returns_false_when_backend_unreachable():
         result = client.warmup()
 
     assert result is False
+
+
+def test_patch_alert_description_sends_correct_payload_and_returns_true():
+    client = BackendClient("http://backend:8080")
+    mock_response=MagicMock()
+    mock_response.raise_for_status.return_value = None
+
+    with patch("app.messaging.backend_client.httpx.patch", return_value=mock_response) as mock_patch:
+        result = client.patch_alert_description("alert-1", "Ollama'nın ürettiği açıklama")
+
+    assert result is True
+    args, kwargs = mock_patch.call_args
+    assert args[0] == "http://backend:8080/api/alerts/alert-1/description"
+    assert kwargs["json"] == {"description": "Ollama'nın ürettiği açıklama"}
+
+
+def test_patch_alert_description_returns_false_when_backend_unreachable():
+    client = BackendClient("http://backend:8080")
+    with patch("app.messaging.backend_client.httpx.patch", side_effect=httpx.ConnectError("boom")):
+        result=client.patch_alert_description("alert-1", "açıklama")
+
+    assert result is False
