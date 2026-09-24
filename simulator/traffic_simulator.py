@@ -105,6 +105,34 @@ class TrafficSimulator:
             time.sleep(1.0 / max(rate, 0.1))
 
 
+class KeepAliveService:
+    """render gibi ücretsiz servislerde uyku moduna geçmemeleri için servisleri periyodik pinglemek icinn"""
+
+    def __init__(self, interval_seconds: float = 600.0):
+        self.interval_seconds = interval_seconds
+        api_url = os.environ.get("OPENSIGHT_API_URL", "http://localhost:8080").rstrip("/")
+        analysis_url = os.environ.get("OPENSIGHT_ANALYSIS_URL", "http://localhost:8001").rstrip("/")
+        simulator_url = os.environ.get("OPENSIGHT_SIMULATOR_URL", "http://localhost:10000").rstrip("/")
+        self.targets = {
+            "opensight-api": f"{api_url}/health",
+            "opensight-analysis": f"{analysis_url}/health",
+            "opensight-simulator":f"{simulator_url}/health",
+        }
+
+    def _ping(self, name: str, url: str) -> None:
+        try:
+            response = requests.get(url, timeout=5)
+            print(f"[keep-alive] pinged {name} -> {response.status_code}", flush=True)
+        except requests.RequestException as exc:
+            print(f"[keep-alive] {name} adresine ulaşılamadı: {exc}", flush=True)
+
+    def run(self) -> None:
+        while True:
+            for name, url in self.targets.items():
+                self._ping(name, url)
+            time.sleep(self.interval_seconds)
+
+
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path in ("/", "/health"):
@@ -133,6 +161,10 @@ def main() -> None:
     parser.add_argument("--cold-start-seconds", type=int, default=90)
     parser.add_argument("--clients-per-profile", type=int, default=3)
     args = parser.parse_args()
+
+    keep_alive = KeepAliveService()
+    keep_alive_thread = threading.Thread(target=keep_alive.run, daemon=True)
+    keep_alive_thread.start()
 
     sim = TrafficSimulator(args.base_url, args.ground_truth_path, args.cold_start_seconds)
     sim_thread = threading.Thread(target=sim.run, args=(args.clients_per_profile,), daemon=True)
