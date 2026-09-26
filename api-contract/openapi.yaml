@@ -2,10 +2,7 @@ openapi: 3.0.3
 info:
   title: OpenSight API
   version: "0.1.0"
-  description: >
-    Mock Open Banking API + Alert/Korelasyon yönetimi.
-    Analiz Servisi (Python) bu API'yi çağırarak alert ve korelasyon olaylarını yazar;
-    React Dashboard bu API üzerinden okuma yapar.
+  description: Mock Open Banking endpoint'leri ile alert ve korelasyon yönetimi.
 
 servers:
   - url: http://localhost:8080
@@ -13,7 +10,7 @@ servers:
 paths:
   /v1/accounts:
     get:
-      summary: Mock hesap bilgisi sorgusu (Open Banking - account info)
+      summary: Hesap listesini döndürür (mock)
       parameters:
         - $ref: '#/components/parameters/ClientIdHeader'
       responses:
@@ -22,7 +19,7 @@ paths:
 
   /v1/payments:
     post:
-      summary: Mock ödeme başlatma (Open Banking - payment initiation)
+      summary: Ödeme başlatır (mock)
       parameters:
         - $ref: '#/components/parameters/ClientIdHeader'
       responses:
@@ -31,21 +28,26 @@ paths:
 
   /api/alerts:
     get:
-      summary: Son alert'leri listeler (FR5)
+      summary: Alert'leri listeler
       parameters:
         - name: take
           in: query
           schema: { type: integer, default: 50 }
+        - name: skip
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: hours
+          in: query
+          description: Son N saat (opsiyonel)
+          schema: { type: integer, nullable: true }
       responses:
         "200":
-          description: Alert listesi
+          description: Sayfalanmış alert listesi
           content:
             application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/AlertListItem' }
+              schema: { $ref: '#/components/schemas/PagedAlerts' }
     post:
-      summary: Analiz Servisi'nin ürettiği yeni alert'i kaydeder (FR2/FR3)
+      summary: Yeni alert kaydeder (Python analiz servisi tarafından çağrılır)
       requestBody:
         required: true
         content:
@@ -57,7 +59,11 @@ paths:
 
   /api/alerts/summary:
     get:
-      summary: Dashboard üst metrik kartları (Şekil 5)
+      summary: Dashboard metrik özeti
+      parameters:
+        - name: hours
+          in: query
+          schema: { type: integer, default: 24 }
       responses:
         "200":
           description: Özet
@@ -67,7 +73,7 @@ paths:
 
   /api/alerts/correlations:
     post:
-      summary: İki alert'i birleşik korelasyon olayı olarak işaretler (FR4)
+      summary: Korelasyon olayı oluşturur
       requestBody:
         required: true
         content:
@@ -79,7 +85,7 @@ paths:
 
   /api/alerts/{alertId}/acknowledge:
     post:
-      summary: Alert'i onayla (Şekil 6 aksiyon butonu)
+      summary: Alert'i onaylar
       parameters:
         - name: alertId
           in: path
@@ -90,7 +96,7 @@ paths:
 
   /api/alerts/{alertId}/silence:
     post:
-      summary: Alert'i sessize al (Şekil 6 aksiyon butonu)
+      summary: Alert'i sessize alır
       parameters:
         - name: alertId
           in: path
@@ -144,3 +150,14 @@ components:
         correlationEventCount: { type: integer }
         averageLatencyMs: { type: number }
         activeClientCount: { type: integer }
+        previousActiveAlertCount: { type: integer }
+        previousCorrelationEventCount: { type: integer }
+        previousActiveClientCount: { type: integer }
+
+    PagedAlerts:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AlertListItem' }
+        totalCount: { type: integer }
