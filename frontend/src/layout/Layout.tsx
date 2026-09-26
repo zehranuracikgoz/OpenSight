@@ -38,7 +38,9 @@ export function Layout({ children }: LayoutProps) {
   return (
     <div className={styles.shell}>
       <aside className={styles.sidebar}>
-        <div className={styles.brand}>OpenSight</div>
+        <div className={styles.brand}>
+          <img src="/logo.svg" alt="OpenSight" className={styles.brandLogo} />
+        </div>
         <nav className={styles.nav}>
           <NavLink
             to="/"

@@ -21,6 +21,12 @@
   padding: 0.5rem 0.75rem 1.5rem;
 }
 
+.brandLogo {
+  display: block;
+  width: 132px;
+  height: auto;
+}
+
 .nav {
   display: flex;
   flex-direction: column;
