@@ -28,3 +28,6 @@ build/
 .DS_Store
 Thumbs.db
 simulator/*.log
+docs/
+postman/
+scripts/
