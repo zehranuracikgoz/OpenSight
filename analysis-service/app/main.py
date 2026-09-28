@@ -32,7 +32,10 @@ REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
 RABBITMQ_URI = os.environ.get("RABBITMQ_URI", "")
 RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "localhost")
 RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", "5672"))
-COLD_START_SECONDS = int(os.environ.get("COLD_START_SECONDS", "90"))
+# baseline yoğunun patlama dönemini de görmeli, o yüzden pencere patlama aralığından (~120-240s) uzun
+COLD_START_SECONDS = int(os.environ.get("COLD_START_SECONDS", "420"))
+# aynı istemci + aynı tür için bu süre dolmadan yeni alarm yazılmıyor
+ALERT_COOLDOWN_SECONDS = float(os.environ.get("ALERT_COOLDOWN_SECONDS", "300"))
 BACKEND_URL = os.environ.get("OPENSIGHT_API_URL", "http://localhost:8080")
 # Render'da CORS_ORIGIN olarak girildi, yerelde/docker-compose'da hala DASHBOARD_ORIGIN kullaniliyor
 DASHBOARD_ORIGIN = os.environ.get("CORS_ORIGIN") or os.environ.get("DASHBOARD_ORIGIN", "http://localhost:5173")
@@ -58,7 +61,10 @@ else:
     redis_client = Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 
 performance_detector = RollingZScoreDetector(redis_client, window_size=50, threshold=3.2)
-behavioral_detector = BehavioralAnomalyDetector(contamination=0.05)
+# 0.05'te normal/yoğunun yarısı yanlış işaretleniyordu, 0.005'te şüpheli yine güvenilir ayrışıyor -
+# dashboard'daki ThresholdConfig.tsx DEFAULT_CONTAMINATION ile aynı tutulmalı
+DEFAULT_CONTAMINATION = 0.005
+behavioral_detector = BehavioralAnomalyDetector(contamination=DEFAULT_CONTAMINATION)
 traffic_window = ClientTrafficWindow(redis_client)
 cold_start = ColdStartManager(redis_client, behavioral_detector, cold_start_seconds=COLD_START_SECONDS)
 correlation_engine = CorrelationEngine(window_seconds=30 * 60)
@@ -69,6 +75,7 @@ threshold_settings = ThresholdSettingsService(redis_client, performance_detector
 anomaly_pipeline = AnomalyPipeline(
     performance_detector, behavioral_detector, traffic_window, cold_start, correlation_engine, backend_client,
     threshold_settings=threshold_settings,
+    alert_cooldown_seconds=ALERT_COOLDOWN_SECONDS,
 )
 traffic_consumer = RabbitMqTrafficConsumer(RABBITMQ_HOST, anomaly_pipeline, port=RABBITMQ_PORT, uri=RABBITMQ_URI or None)
 _consumer_thread: threading.Thread | None = None
@@ -91,6 +98,17 @@ def stop_traffic_consumer() -> None:
 @app.get("/health")
 def health() -> dict:
     return {"status": "healthy", "service": "opensight-analysis"}
+
+
+@app.get("/status")
+def status() -> dict:
+    """modelin eğitilip eğitilmediğini döndürüyor - simülatör şüpheli trafiği bu sinyalle başlatıyor"""
+    return {
+        "model_ready": cold_start.is_ready(),
+        "in_cold_start": cold_start.is_in_cold_start(),
+        "baseline_samples": cold_start.baseline_size(),
+        "last_trained_at": behavioral_detector.last_trained_at,
+    }
 
 
 class LatencySample(BaseModel):

@@ -1,12 +1,13 @@
 """
 ClientTrafficWindow: her istemcinin son isteklerini (endpoint + gecikme + zaman) Redis'te
-tutuyor, BehavioralAnomalyDetector'ın beklediği [istek_orani, endpoint_cesitliligi,
+tutuyor, BehavioralAnomalyDetector'ın beklediği [istek_orani, en_sik_endpoint_payi,
 ortalama_gecikme] özellik vektörünü bu pencereden hesaplıyor
 """
 from __future__ import annotations
 
 import json
 import time
+from collections import Counter
 
 from redis import Redis
 
@@ -41,7 +42,7 @@ class ClientTrafficWindow:
         return self.feature_vector(client_id, now=timestamp)
 
     def feature_vector(self, client_id: str, now: float | None = None) -> list[float]:
-        """son window_seconds içindeki isteklerden [istek_orani, endpoint_cesitliligi, ortalama_gecikme] hesaplıyor"""
+        """son window_seconds içindeki isteklerden [istek_orani, en_sik_endpoint_payi, ortalama_gecikme] hesaplıyor"""
         now = time.time() if now is None else now
         cutoff = now - self.window_seconds
         raw = self.redis.lrange(self._key(client_id), 0, -1)
@@ -52,7 +53,8 @@ class ClientTrafficWindow:
             return [0.0, 0.0, 0.0]
 
         request_rate = len(recent) / self.window_seconds
-        endpoint_diversity = len({e["endpoint"] for e in recent}) / len(recent)
+        # en çok kullanılan endpoint'in payı: 1.0 = hepsi aynı endpoint, 0.5 = iki endpoint'e eşit dağılmış
+        top_endpoint_share = max(Counter(e["endpoint"] for e in recent).values()) / len(recent)
         avg_latency = sum(e["latency_ms"] for e in recent) / len(recent)
 
-        return [round(request_rate, 3), round(endpoint_diversity, 3), round(avg_latency, 2)]
+        return [round(request_rate, 3), round(top_endpoint_share, 3), round(avg_latency, 2)]

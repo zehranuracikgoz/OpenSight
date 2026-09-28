@@ -20,13 +20,13 @@ class BehavioralScoreResult:
 
 class BehavioralAnomalyDetector:
     """
-    özellik vektörü: [istek_orani, endpoint_cesitliligi, ortalama_gecikme]
+    özellik vektörü: [istek_orani, en_sik_endpoint_payi, ortalama_gecikme]
     - istek_orani: son pencerede saniyedeki istek sayısı
-    - endpoint_cesitliligi: benzersiz endpoint sayısı / toplam istek (düşük = tekdüze/şüpheli)
+    - en_sik_endpoint_payi: en çok kullanılan endpoint'in istek sayısı / toplam istek (yüksek = tekdüze/şüpheli)
     - ortalama_gecikme: son pencerede ortalama gecikme (ms)
     """
 
-    FEATURE_NAMES = ["istek_orani", "endpoint_cesitliligi", "ortalama_gecikme"]
+    FEATURE_NAMES = ["istek_orani", "en_sik_endpoint_payi", "ortalama_gecikme"]
 
     def __init__(self, contamination: float = 0.05, random_state: int = 42):
         self.contamination = contamination

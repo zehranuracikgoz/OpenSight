@@ -63,7 +63,8 @@ def pipeline(rabbitmq_container, redis_container):
     performance_detector = RollingZScoreDetector(redis_client, window_size=20, threshold=3.0)
     behavioral_detector = BehavioralAnomalyDetector()
     traffic_window = ClientTrafficWindow(redis_client, window_seconds=60)
-    cold_start = ColdStartManager(redis_client, behavioral_detector, cold_start_seconds=90)
+    # olaylar birkaç ms arayla yayınlanıyor - seyreltme kapatılıyor ki her olay baseline'a girsin
+    cold_start = ColdStartManager(redis_client, behavioral_detector, cold_start_seconds=90, baseline_min_gap_seconds=0)
     correlation_engine = CorrelationEngine(window_seconds=1800)
     backend_client = MagicMock()
     backend_client.post_alert.return_value = "alert-stub"
@@ -121,9 +122,9 @@ def test_consumer_writes_behavioral_window_to_redis(pipeline):
 
     assert _wait_until(lambda: redis_client.llen("behavioral:window:client_y") >= 6)
 
-    request_rate, endpoint_diversity, avg_latency = traffic_window.feature_vector("client_y")
+    request_rate, top_endpoint_share, avg_latency = traffic_window.feature_vector("client_y")
     assert request_rate > 0
-    assert endpoint_diversity > 0
+    assert top_endpoint_share == pytest.approx(0.5)  # iki endpoint'e eşit dağılmış
     assert avg_latency == pytest.approx(40, abs=1)
 
 
@@ -135,7 +136,7 @@ def test_cold_start_collects_baseline_via_real_pipeline(pipeline):
 
     _publish_events(pipeline["connection_params"], [("client_z", "/v1/accounts", 45)] * 5)
 
-    assert _wait_until(lambda: redis_client.llen("behavioral:baseline") >= 5)
+    assert _wait_until(lambda: redis_client.llen("behavioral:baseline:v2") >= 5)
     assert cold_start.is_ready() is False  # süre henüz dolmadı
 
 
@@ -143,9 +144,12 @@ def test_cold_start_finishes_and_trains_model_once_window_elapses(pipeline):
     cold_start = pipeline["cold_start"]
     behavioral_detector = pipeline["behavioral_detector"]
     connection_params = pipeline["connection_params"]
+    redis_client = pipeline["redis"]
 
-    _publish_events(connection_params, [("client_w", "/v1/accounts", 45)] * 6)
-    _wait_until(lambda: cold_start.redis.llen("behavioral:baseline") >= 5)
+    # önceki testler de baseline'a katkı yapmış olabilir, eksik kalanı tamamlıyor
+    already = redis_client.llen("behavioral:baseline:v2")
+    _publish_events(connection_params, [("client_w", "/v1/accounts", 45)] * max(0, 30 - already))
+    _wait_until(lambda: redis_client.llen("behavioral:baseline:v2") >= 30)
 
     # cold start süresinin dolduğunu simüle ediyor (gerçek akışta 90s beklenir)
     cold_start.start_time -= 1000

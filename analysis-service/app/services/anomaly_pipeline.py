@@ -20,6 +20,8 @@ from app.services.threshold_settings import ThresholdSettingsService
 from app.services.traffic_window import ClientTrafficWindow
 logger = logging.getLogger("opensight.anomaly_pipeline")
 
+DEFAULT_ALERT_COOLDOWN_SECONDS = 300.0
+
 
 def severity_for_zscore(z_score: float) -> str:
     if abs(z_score) >= 6.0:
@@ -48,6 +50,7 @@ class AnomalyPipeline:
         backend_client: BackendClient,
         threshold_settings: ThresholdSettingsService | None = None,
         explanation_generator: ExplanationGenerator | None = None,
+        alert_cooldown_seconds: float = DEFAULT_ALERT_COOLDOWN_SECONDS,
     ):
         self.performance_detector = performance_detector
         self.behavioral_detector = behavioral_detector
@@ -57,12 +60,19 @@ class AnomalyPipeline:
         self.backend_client = backend_client
         self.threshold_settings = threshold_settings
         self.explanation_generator = explanation_generator
+        self.alert_cooldown_seconds = alert_cooldown_seconds
+        # (istemci, alarm türü) -> son alarmın zamanı; aynı tür alarm cooldown süresince tekrar yazılmıyor
+        self._last_alert_at: dict[tuple[str, str], float] = {}
+
+    def _in_cooldown(self, client_id: str, alert_type: str, timestamp: float) -> bool:
+        last = self._last_alert_at.get((client_id, alert_type))
+        return last is not None and timestamp - last < self.alert_cooldown_seconds
 
     def process(self, client_id: str, endpoint: str, latency_ms: float, timestamp: float) -> None:
         """tek bir trafik olayını işliyor - tespit, korelasyon ve backend'e yazma burada birleşiyor"""
         perf_result = self.performance_detector.update_and_score(client_id, latency_ms)
         feature_vector = self.traffic_window.record(client_id, endpoint, latency_ms, timestamp)
-        self.cold_start.handle(feature_vector)
+        self.cold_start.handle(client_id, feature_vector, timestamp)
 
         pending: list[tuple[str, str]] = []
 
@@ -71,7 +81,8 @@ class AnomalyPipeline:
         # burada baglaniyor.
         request_rate = feature_vector[0]
 
-        if perf_result.is_anomaly:
+        # cooldown türe göre ayrı - performans beklerken gelen davranışsal alarm yine yazılıyor
+        if perf_result.is_anomaly and not self._in_cooldown(client_id, "Performans", timestamp):
             severity = severity_for_zscore(perf_result.z_score)
             description = self._fallback_description(client_id, "Performans", severity)
             post_kwargs = {
@@ -83,6 +94,7 @@ class AnomalyPipeline:
                 post_kwargs["description"] = description
             alert_id = self.backend_client.post_alert(client_id, "Performans", severity, **post_kwargs)
             if alert_id:
+                self._last_alert_at[(client_id, "Performans")] = timestamp
                 pending.append(("Performans", alert_id))
                 if self.threshold_settings:
                     self.threshold_settings.record_alert("Performans")
@@ -92,7 +104,7 @@ class AnomalyPipeline:
 
         if self.cold_start.is_ready():
             behavioral_result = self.behavioral_detector.score(feature_vector)
-            if behavioral_result.is_anomaly:
+            if behavioral_result.is_anomaly and not self._in_cooldown(client_id, "Davranışsal", timestamp):
                 severity = severity_for_anomaly_score(behavioral_result.anomaly_score)
                 description = self._fallback_description(client_id, "Davranışsal", severity)
                 post_kwargs = {
@@ -104,6 +116,7 @@ class AnomalyPipeline:
                     post_kwargs["description"] = description
                 alert_id = self.backend_client.post_alert(client_id, "Davranışsal", severity, **post_kwargs)
                 if alert_id:
+                    self._last_alert_at[(client_id, "Davranışsal")] = timestamp
                     pending.append(("Davranışsal", alert_id))
                     if self.threshold_settings:
                         self.threshold_settings.record_alert("Davranışsal")

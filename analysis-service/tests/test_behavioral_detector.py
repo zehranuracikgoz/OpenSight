@@ -5,7 +5,7 @@ from app.services.behavioral_detector import BehavioralAnomalyDetector
 
 def _baseline_features(n=200, seed=0):
     rng = random.Random(seed)
-    return [[rng.uniform(0.2, 1.0), rng.uniform(0.4, 1.0), rng.uniform(20, 60)] for _ in range(n)]
+    return [[rng.uniform(0.2, 1.0), rng.uniform(0.4, 0.7), rng.uniform(20, 60)] for _ in range(n)]
 
 
 def test_unfitted_model_never_flags_anomaly():
@@ -18,13 +18,13 @@ def test_unfitted_model_never_flags_anomaly():
 def test_normal_vector_scores_low_after_fit():
     det = BehavioralAnomalyDetector(contamination=0.05)
     det.fit(_baseline_features())
-    result = det.score([0.6, 0.7, 40])
+    result = det.score([0.6, 0.55, 40])
     assert result.is_anomaly is False
 
 
 def test_suspicious_vector_flagged_after_fit():
-    """yüksek istek oranı + dar endpoint çeşitliliği davranışsal anomali olarak işaretleniyor"""
+    """yüksek istek oranı + neredeyse hep aynı endpoint (yüksek en sık endpoint payı) davranışsal anomali olarak işaretleniyor"""
     det = BehavioralAnomalyDetector(contamination=0.05)
     det.fit(_baseline_features())
-    result = det.score([18.0, 0.05, 45])
+    result = det.score([18.0, 0.95, 45])
     assert result.is_anomaly is True

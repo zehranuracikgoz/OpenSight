@@ -14,20 +14,20 @@ def test_empty_window_returns_zero_vector(redis_client):
     assert window.feature_vector("client_a", now=1000.0) == [0.0, 0.0, 0.0]
 
 
-def test_single_endpoint_gives_low_diversity(redis_client):
+def test_single_endpoint_gives_full_top_endpoint_share(redis_client):
     window = ClientTrafficWindow(redis_client, window_seconds=60)
     t0 = 1000.0
     for i in range(10):
         window.record("client_a", "/v1/accounts", latency_ms=50, timestamp=t0 + i)
 
     vector = window.feature_vector("client_a", now=t0 + 10)
-    request_rate, endpoint_diversity, avg_latency = vector
-    assert endpoint_diversity == pytest.approx(1 / 10)
+    request_rate, top_endpoint_share, avg_latency = vector
+    assert top_endpoint_share == pytest.approx(1.0)  # 10 isteğin 10'u aynı endpoint
     assert avg_latency == pytest.approx(50)
     assert request_rate > 0
 
 
-def test_varied_endpoints_give_high_diversity(redis_client):
+def test_evenly_split_endpoints_give_half_top_endpoint_share(redis_client):
     window = ClientTrafficWindow(redis_client, window_seconds=60)
     t0 = 2000.0
     endpoints = ["/v1/accounts", "/v1/payments"]
@@ -35,7 +35,19 @@ def test_varied_endpoints_give_high_diversity(redis_client):
         window.record("client_b", endpoints[i % 2], latency_ms=40, timestamp=t0 + i)
 
     vector = window.feature_vector("client_b", now=t0 + 10)
-    assert vector[1] == pytest.approx(2 / 10)
+    assert vector[1] == pytest.approx(0.5)  # iki endpoint'e eşit dağılmış
+
+
+def test_top_endpoint_share_uses_most_used_endpoint(redis_client):
+    window = ClientTrafficWindow(redis_client, window_seconds=60)
+    t0 = 3000.0
+    # 20 istekten 19'u /v1/accounts, 1'i /v1/payments -> en sık endpoint payı 0.95
+    for i in range(20):
+        endpoint = "/v1/payments" if i == 7 else "/v1/accounts"
+        window.record("client_d", endpoint, latency_ms=50, timestamp=t0 + i)
+
+    vector = window.feature_vector("client_d", now=t0 + 20)
+    assert vector[1] == pytest.approx(0.95)
 
 
 def test_events_outside_window_are_excluded(redis_client):
