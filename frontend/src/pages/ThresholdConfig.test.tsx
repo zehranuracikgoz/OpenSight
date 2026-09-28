@@ -56,7 +56,7 @@ describe('ThresholdConfig', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Varsayılana Dön' }));
 
     expect(screen.getByLabelText(/Z-Score Eşiği/)).toHaveValue('3.2');
-    expect(screen.getByLabelText(/Isolation Forest Contamination Oranı/)).toHaveValue('0.05');
+    expect(screen.getByLabelText(/Isolation Forest Contamination Oranı/)).toHaveValue('0.005');
   });
 
 });

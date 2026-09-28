@@ -5,7 +5,7 @@ import { ZScoreDistributionChart } from '../components/ZScoreDistributionChart';
 import styles from './ThresholdConfig.module.css';
 
 const DEFAULT_Z_SCORE_THRESHOLD = 3.2;
-const DEFAULT_CONTAMINATION = 0.05;
+const DEFAULT_CONTAMINATION = 0.005;
 
 function formatDateTime(iso: string | null | undefined): string {
   return iso ? new Date(iso).toLocaleString('tr-TR') : 'henüz eğitilmedi';
@@ -81,15 +81,15 @@ export function ThresholdConfig() {
       <div className={styles.field}>
         <label htmlFor="contamination">
           Isolation Forest Contamination Oranı:{' '}
-          <span className={styles.monoValue}>{contamination.toFixed(2)}</span>
+          <span className={styles.monoValue}>{contamination.toFixed(3)}</span>
         </label>
         <input
           id="contamination"
           className={styles.slider}
           type="range"
-          min = {0.01}
+          min = {0.005}
           max = {0.5}
-          step={0.01}
+          step={0.005}
           value={contamination}
           onChange={(e) => setContamination(Number(e.target.value))}
         />
