@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using OpenSight.Api;
 using OpenSight.Application.Interfaces;
 using OpenSight.Infrastructure.Messaging;
 using OpenSight.Infrastructure.Persistence;
@@ -16,6 +17,10 @@ builder.Services.AddSingleton<ITrafficEventPublisher>(_ =>
 
 // iş mantığı servisleri
 builder.Services.AddScoped<IAlertService, AlertService>();
+
+// mock API'de gecikmeyi yüke bağlamak için
+builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddSingleton<LoadAwareLatencySimulator>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

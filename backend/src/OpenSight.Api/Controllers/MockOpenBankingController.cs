@@ -12,14 +12,20 @@ namespace OpenSight.Api.Controllers;
 public class MockOpenBankingController : ControllerBase
 {
     private readonly ITrafficEventPublisher _publisher;
+    private readonly LoadAwareLatencySimulator _latencySimulator;
 
-    public MockOpenBankingController(ITrafficEventPublisher publisher) => _publisher = publisher;
+    public MockOpenBankingController(ITrafficEventPublisher publisher, LoadAwareLatencySimulator latencySimulator)
+    {
+        _publisher = publisher;
+        _latencySimulator = latencySimulator;
+    }
 
     [HttpGet("accounts")]
     public async Task<IActionResult> GetAccounts([FromHeader(Name = "X-Client-Id")] string clientId)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        await Task.Delay(Random.Shared.Next(20, 80)); // gerçekçi bir gecikme simülesi
+        // taban gecikmeye istemcinin yüküne göre ek gecikme ekleniyor
+        await Task.Delay(Random.Shared.Next(20, 80) + _latencySimulator.ComputeExtraDelayMs(clientId)); // gerçekçi bir gecikme simülesi
         sw.Stop();
 
         await LogTrafficAsync(clientId, "/v1/accounts", (int)sw.ElapsedMilliseconds, 200);
@@ -30,7 +36,7 @@ public class MockOpenBankingController : ControllerBase
     public async Task<IActionResult> InitiatePayment([FromHeader(Name = "X-Client-Id")] string clientId)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        await Task.Delay(Random.Shared.Next(30, 150));
+        await Task.Delay(Random.Shared.Next(30, 150) + _latencySimulator.ComputeExtraDelayMs(clientId));
         sw.Stop();
 
         await LogTrafficAsync(clientId, "/v1/payments", (int)sw.ElapsedMilliseconds, 201);
