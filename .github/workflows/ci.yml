@@ -41,10 +41,14 @@ jobs:
           python-version: "3.12"
 
       - name: Bağımlılıkları geri yükle
-        run: pip install -r analysis-service/requirements.txt
+        run: |
+          pip install -r analysis-service/requirements.txt
+          pip install -r simulator/requirements.txt
 
       - name: Testleri çalıştır
-        run: pytest analysis-service/tests
+        run: |
+          pytest analysis-service/tests
+          pytest simulator/tests
 
   frontend-build:
     runs-on: ubuntu-latest
