@@ -44,11 +44,13 @@ jobs:
         run: |
           pip install -r analysis-service/requirements.txt
           pip install -r simulator/requirements.txt
+          pip install -r evaluation/requirements.txt
 
       - name: Testleri çalıştır
         run: |
           pytest analysis-service/tests
           pytest simulator/tests
+          pytest evaluation/tests
 
   frontend-build:
     runs-on: ubuntu-latest

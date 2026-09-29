@@ -31,3 +31,4 @@ simulator/*.log
 docs/
 postman/
 scripts/
+evaluation/results/
