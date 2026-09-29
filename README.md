@@ -1,103 +1,100 @@
-Language: [🇬🇧 English](#english) · [🇹🇷 Türkçe](#türkçe)
+**Language:** [🇬🇧 English](#english) · [🇹🇷 Türkçe](#türkçe)
 
-Live demo: [open-sight-theta.vercel.app](https://open-sight-theta.vercel.app/)
+**Live demo:** [open-sight-theta.vercel.app](https://open-sight-theta.vercel.app)
+---
 
 <a name="english"></a>
 
-# OpenSight — Unified Performance & Behavioral Anomaly Detection for Open Banking APIs
+# OpenSight — Performance & Behavioral Anomaly Detection for Open Banking APIs
 
-OpenSight is a full-stack observability platform for Open Banking API traffic. It detects performance anomalies (latency spikes) with a rolling z-score and behavioral anomalies (clients acting unusually) with Isolation Forest, all from the same traffic stream. Its key contribution is a correlation layer: when both signals fire for the same client in the same time window, they are merged into a single correlated event, because a performance drop can be a side effect of an attack. Built with an ASP.NET Core backend, a Python analysis service and a React dashboard, developed as an internship project.
+OpenSight is a full-stack observability platform for Open Banking API traffic. It detects performance anomalies (latency spikes) with a rolling z-score and behavioral anomalies (clients acting unusually) with Isolation Forest, both from the same traffic stream. When both signals fire for the same client within the same time window, a correlation layer merges them into a single event, since a performance drop can be a side effect of an attack. Built with an ASP.NET Core backend, a Python analysis service and a React dashboard, developed as an internship project and deployed on Vercel and Render.
 
-```
+---
 
 ## Technologies
 
-* C#, ASP.NET Core, Entity Framework Core, PostgreSQL
-* Python, FastAPI, scikit-learn — rolling z-score and Isolation Forest
-* RabbitMQ — asynchronous, fire-and-forget traffic pipeline
-* Redis — hot-path store for live metrics and per-client feature windows
-* React, TypeScript, Vite, Recharts — dashboard
-* Ollama (optional) — local LLM for human-readable alert explanations
-* xUnit, pytest, Vitest
-* GitHub Actions — CI
-* Docker, Vercel, Render, Supabase, Upstash, CloudAMQP
+- **C#, ASP.NET Core, Entity Framework Core, PostgreSQL**
+- **Python, FastAPI, scikit-learn** — rolling z-score and Isolation Forest
+- **RabbitMQ** — asynchronous, fire-and-forget traffic pipeline
+- **Redis** — live metric windows and model baseline
+- **React, TypeScript, Vite, Recharts** — dashboard
+- **Ollama** (optional) — local LLM for alert explanations
+- **xUnit, pytest, Vitest**
+- **GitHub Actions** — CI
+- **Docker, Vercel, Render, Supabase, Upstash, CloudAMQP**
+
+---
 
 ## Features
 
-* Traffic simulator with three behavior profiles: normal, heavy and suspicious
-* Mock Open Banking API that publishes every request to RabbitMQ without blocking its own response
-* Real-time performance anomaly detection with a rolling z-score over Redis windows
-* Behavioral anomaly detection with Isolation Forest on per-client feature vectors
-* Correlation layer that merges performance and behavioral alerts for the same client within a 30-minute window
-* Cold-start strategy: 90 seconds of normal-only traffic to train the model before anomalous profiles start
-* Optional Ollama explanations with a 3-second timeout and a rule-based fallback template
-* Dashboard with alert feed, correlated event detail panel and threshold configuration
-* Keep-alive pings so the free-tier cloud services stay awake
+- Traffic simulator with normal, heavy and suspicious client profiles; heavy clients alternate between calm and burst periods
+- Mock Open Banking API whose latency grows with each client's load
+- Real-time performance anomaly detection with a per-client rolling z-score on latency
+- Behavioral anomaly detection with Isolation Forest on three per-client features: request rate, top-endpoint share and average latency
+- Correlation layer that merges performance and behavioral alerts for the same client within a 30-minute window
+- Model baseline built from legitimate traffic and persisted in Redis, so restarts do not require a new cold start
+- Readiness signal: suspicious traffic starts only after the model reports it is trained
+- 5-minute alert cooldown per client and alert type to prevent alert floods
+- Optional Ollama explanations with a 3-second timeout and a rule-based fallback template
+- Dashboard with alert feed, correlated event detail panel and threshold configuration
+- Evaluation script that measures precision, recall and F1 against the simulator's ground-truth labels
+
+---
 
 ## The Process
 
-The project started with a mock Open Banking API whose endpoints publish each request to RabbitMQ in a fire-and-forget way, so the analysis side can never slow down the bank API. A Python simulator generates normal, heavy and suspicious traffic. The analysis service consumes the queue, keeps recent requests in Redis, computes rolling z-scores for latency, and extracts per-client features for Isolation Forest. Since Isolation Forest must be trained before it can score, the simulator sends only normal traffic at startup; once the baseline is collected the model is fitted and live detection begins. The correlation layer then checks both alert streams per client and stores alerts and correlated events in PostgreSQL. When Ollama is available it turns raw scores into readable explanations; otherwise the system falls back to a template, so detection never depends on the LLM. The dashboard uses a warm cream-and-amber theme with monospace numbers for a calm, data-focused look. CI builds and tests the backend, analysis service and frontend on every push.
+The project started with a mock Open Banking API whose endpoints publish each request to RabbitMQ in a fire-and-forget way, so the analysis side can never slow down the bank API. A Python simulator generates normal, heavy and suspicious traffic, and the mock API adds latency as a client's request rate rises, so heavy bursts produce real slowdowns. The analysis service consumes the queue, keeps recent requests in Redis and computes a rolling z-score on latency for each client. For behavioral detection, Isolation Forest is trained on a baseline sampled from legitimate (normal and heavy) traffic, so it learns that busy clients are not suspicious by themselves; what stands out is a client that is both fast and concentrated on a single endpoint. The correlation layer checks both alert streams per client and stores alerts and correlated events in PostgreSQL. On a 30-minute evaluation run, the behavioral detector reached 0.86 recall and 0.72 F1, and the performance detector caught 67% of heavy bursts with no false positives on heavy clients. The dashboard uses a warm cream-and-amber theme with monospace numbers for a calm, data-focused look.
+
+---
 
 ## Installation
 
 ```bash
-# Full stack with Docker (API, analysis service, PostgreSQL, Redis, RabbitMQ, frontend)
+# Full stack (API, analysis service, PostgreSQL, Redis, RabbitMQ, frontend)
 docker compose up -d
 
-# Apply the database schema once (the API does not migrate on startup; repeat after `docker compose down -v`)
-cd backend/src/OpenSight.Api
-dotnet user-secrets set "ConnectionStrings:OpenSightDb" "Host=localhost;Port=5432;Database=OpenSightDb;Username=postgres;Password=<POSTGRES_PASSWORD from docker-compose.yml>"
-cd ../..
+# Database migration
+cd backend
 dotnet ef database update --project src/OpenSight.Infrastructure --startup-project src/OpenSight.Api
-cd ..
-
-# Optional: include Ollama, then pull the model
-docker compose --profile ollama up -d
-docker compose exec ollama ollama pull llama3.2:1b
 ```
 
 Dashboard: `http://localhost:8090`
 
 ```bash
-# Backend (needs PostgreSQL and RabbitMQ, e.g. `docker compose up -d postgres rabbitmq`, and the connection string above)
-cd backend/src/OpenSight.Api
-dotnet run
-```
-
-```bash
-# Analysis service (needs Redis, RabbitMQ and the backend)
-cd analysis-service
-pip install -r requirements.txt
-
-uvicorn app.main:app --reload --port 8001
-```
-
-```bash
-# Traffic simulator (targets http://localhost:8080; the compose stack does not include it)
+# Traffic simulator
 cd simulator
 pip install -r requirements.txt
+# .env: SIMULATOR_RATE_SCALE, SIMULATOR_DURATION_SECONDS
+
 python traffic_simulator.py
 ```
 
 ```bash
-# Frontend
+# Frontend (development)
 cd frontend
 npm install
-# optional: cp .env.example .env.local  (VITE_API_URL, VITE_ANALYSIS_SERVICE_URL; defaults are localhost:8080 / localhost:8001)
+# .env.local: VITE_API_URL, VITE_ANALYSIS_SERVICE_URL
 
 npm run dev
 ```
 
-## Tests
+```bash
+# Evaluation
+cd evaluation
+pip install -r requirements.txt
+
+python evaluate.py
+```
+
+### Tests
 
 ```bash
+cd backend
 dotnet test
 ```
 
 ```bash
-cd analysis-service
-python -m pytest tests/ -v
-# without Docker: python -m pytest tests/ -v --ignore=tests/test_integration_pipeline.py
+python -m pytest analysis-service/tests simulator/tests evaluation/tests -v
 ```
 
 ```bash
@@ -105,102 +102,102 @@ cd frontend
 npm test
 ```
 
+---
+
+---
+
 <a name="türkçe"></a>
 
-# OpenSight — Açık Bankacılık API'leri için Bütünleşik Performans ve Davranışsal Anomali Tespiti
+# OpenSight — Açık Bankacılık API'leri için Performans ve Davranışsal Anomali Tespiti
 
-OpenSight, Açık Bankacılık API trafiği için geliştirilmiş full-stack bir gözlemlenebilirlik platformudur. Aynı trafik akışı üzerinden performans anomalilerini (gecikme artışları) rolling z-score ile, davranışsal anomalileri (olağandışı davranan istemciler) Isolation Forest ile tespit eder. Temel katkısı korelasyon katmanıdır: iki sinyal aynı istemci için aynı zaman penceresinde tetiklendiğinde tek bir korelasyonlu olayda birleştirilir, çünkü bir performans düşüşü bir saldırının yan etkisi olabilir. ASP.NET Core backend, Python analiz servisi ve React dashboard'dan oluşur; staj projesi olarak geliştirilmiştir.
+OpenSight, Açık Bankacılık API trafiği için geliştirilmiş full-stack bir gözlemlenebilirlik platformudur. Aynı trafik akışı üzerinden performans anomalilerini (gecikme artışları) rolling z-score ile, davranışsal anomalileri (olağandışı davranan istemciler) Isolation Forest ile tespit eder. İki sinyal aynı istemci için aynı zaman penceresinde tetiklendiğinde korelasyon katmanı bunları tek bir olayda birleştirir, çünkü bir performans düşüşü bir saldırının yan etkisi olabilir. ASP.NET Core backend, Python analiz servisi ve React dashboard'dan oluşur; staj projesi olarak geliştirilmiştir ve Vercel ile Render üzerinde yayındadır.
 
-```
+---
 
 ## Teknolojiler
 
-* C#, ASP.NET Core, Entity Framework Core, PostgreSQL
-* Python, FastAPI, scikit-learn — rolling z-score ve Isolation Forest
-* RabbitMQ — asenkron, fire-and-forget trafik akışı
-* Redis — canlı metrikler ve istemci bazlı özellik pencereleri için sıcak veri deposu
-* React, TypeScript, Vite, Recharts — dashboard
-* Ollama (opsiyonel) — insan-okunur alert açıklamaları için yerel LLM
-* xUnit, pytest, Vitest
-* GitHub Actions — CI
-* Docker, Vercel, Render, Supabase, Upstash, CloudAMQP
+- **C#, ASP.NET Core, Entity Framework Core, PostgreSQL**
+- **Python, FastAPI, scikit-learn** — rolling z-score ve Isolation Forest
+- **RabbitMQ** — asenkron, fire-and-forget trafik akışı
+- **Redis** — canlı metrik pencereleri ve model baseline'ı
+- **React, TypeScript, Vite, Recharts** — dashboard
+- **Ollama** (opsiyonel) — alert açıklamaları için yerel LLM
+- **xUnit, pytest, Vitest**
+- **GitHub Actions** — CI
+- **Docker, Vercel, Render, Supabase, Upstash, CloudAMQP**
+
+---
 
 ## Özellikler
 
-* Normal, yoğun ve şüpheli olmak üzere üç davranış profili üreten trafik simülatörü
-* Her isteği kendi yanıtını bloklamadan RabbitMQ'ya yayınlayan mock Open Banking API
-* Redis pencereleri üzerinde rolling z-score ile gerçek zamanlı performans anomalisi tespiti
-* İstemci bazlı özellik vektörleri üzerinde Isolation Forest ile davranışsal anomali tespiti
-* Aynı istemciye ait performans ve davranışsal alertleri 30 dakikalık pencerede birleştiren korelasyon katmanı
-* Cold start stratejisi: anomalili profiller başlamadan önce modeli eğitmek için 90 saniyelik yalnızca normal trafik
-* 3 saniyelik timeout ve kural tabanlı şablon fallback'i ile opsiyonel Ollama açıklamaları
-* Alert akışı, korelasyonlu olay detay paneli ve eşik yapılandırması içeren dashboard
-* Ücretsiz katmandaki bulut servislerinin uykuya girmemesi için keep-alive ping'leri
+- Normal, yoğun ve şüpheli istemci profilleri üreten trafik simülatörü; yoğun istemciler sakin ve patlama dönemleri arasında dalgalanır
+- Gecikmesi her istemcinin yüküyle artan mock Open Banking API
+- İstemci bazlı, gecikme üzerinde rolling z-score ile gerçek zamanlı performans anomalisi tespiti
+- Üç istemci bazlı feature üzerinde Isolation Forest ile davranışsal anomali tespiti: istek oranı, en sık endpoint payı ve ortalama gecikme
+- Aynı istemciye ait performans ve davranışsal alertleri 30 dakikalık pencerede birleştiren korelasyon katmanı
+- Meşru trafikten oluşturulan ve Redis'te saklanan model baseline'ı; servis yeniden başladığında yeni bir cold start gerekmez
+- Hazır olma sinyali: şüpheli trafik ancak model eğitildiğini bildirdikten sonra başlar
+- Alert selini önlemek için istemci ve alert türü başına 5 dakikalık cooldown
+- 3 saniyelik timeout ve kural tabanlı şablon fallback'i ile opsiyonel Ollama açıklamaları
+- Alert akışı, korelasyonlu olay detay paneli ve eşik yapılandırması içeren dashboard
+- Simülatörün ground-truth etiketlerine göre precision, recall ve F1 ölçen değerlendirme betiği
+
+---
 
 ## Süreç
 
-Proje, her isteği fire-and-forget şekilde RabbitMQ'ya yayınlayan mock bir Open Banking API ile başladı; böylece analiz tarafı banka API'sini hiçbir zaman yavaşlatamaz. Python simülatörü normal, yoğun ve şüpheli trafik üretir. Analiz servisi kuyruğu tüketir, son istekleri Redis'te tutar, gecikme için rolling z-score hesaplar ve Isolation Forest için istemci bazlı özellikler çıkarır. Isolation Forest skorlamadan önce eğitilmesi gerektiğinden simülatör başlangıçta yalnızca normal trafik gönderir; baseline toplandıktan sonra model eğitilir ve canlı tespit başlar. Korelasyon katmanı her istemci için iki alert akışını karşılaştırır, alertleri ve korelasyonlu olayları PostgreSQL'e yazar. Ollama erişilebilir olduğunda ham skorları okunabilir açıklamalara çevirir; olmadığında sistem şablon metne düşer, yani tespit hiçbir zaman LLM'e bağlı değildir. Dashboard, sakin ve veri odaklı bir görünüm için sıcak krem-amber bir tema ve monospace sayılar kullanır. CI, her push'ta backend, analiz servisi ve frontend'i derleyip test eder.
+Proje, her isteği fire-and-forget şekilde RabbitMQ'ya yayınlayan mock bir Open Banking API ile başladı; böylece analiz tarafı banka API'sini hiçbir zaman yavaşlatamaz. Python simülatörü normal, yoğun ve şüpheli trafik üretir; mock API ise bir istemcinin istek oranı arttıkça gecikme ekler, böylece yoğun patlamalar gerçek yavaşlamalara yol açar. Analiz servisi kuyruğu tüketir, son istekleri Redis'te tutar ve her istemci için gecikme üzerinde rolling z-score hesaplar. Davranışsal tespit için Isolation Forest, meşru (normal ve yoğun) trafikten örneklenen bir baseline üzerinde eğitilir; böylece yoğun bir istemcinin tek başına şüpheli olmadığını öğrenir. Öne çıkan, hem hızlı hem de tek bir endpoint'e yoğunlaşmış istemcidir. Korelasyon katmanı her istemci için iki alert akışını karşılaştırır, alertleri ve korelasyonlu olayları PostgreSQL'e yazar. 30 dakikalık bir değerlendirme koşusunda davranışsal dedektör 0,86 recall ve 0,72 F1'e ulaştı; performans dedektörü yoğun patlamaların %67'sini yakaladı ve yoğun istemcilerde hiç yanlış alarm üretmedi. Dashboard, sakin ve veri odaklı bir görünüm için sıcak krem-amber bir tema ve monospace sayılar kullanır.
+
+---
 
 ## Kurulum
 
 ```bash
-# Docker ile tüm sistem (API, analiz servisi, PostgreSQL, Redis, RabbitMQ, frontend)
+# Tüm sistem (API, analiz servisi, PostgreSQL, Redis, RabbitMQ, frontend)
 docker compose up -d
 
-# Veritabanı şemasını bir kez uygulayın (API açılışta migration çalıştırmaz; `docker compose down -v` sonrası tekrarlayın)
-cd backend/src/OpenSight.Api
-dotnet user-secrets set "ConnectionStrings:OpenSightDb" "Host=localhost;Port=5432;Database=OpenSightDb;Username=postgres;Password=<docker-compose.yml'deki POSTGRES_PASSWORD>"
-cd ../..
+# Veritabanı migration'ı
+cd backend
 dotnet ef database update --project src/OpenSight.Infrastructure --startup-project src/OpenSight.Api
-cd ..
-
-# Opsiyonel: Ollama ile birlikte, ardından modeli indirin
-docker compose --profile ollama up -d
-docker compose exec ollama ollama pull llama3.2:1b
 ```
 
 Dashboard: `http://localhost:8090`
 
 ```bash
-# Backend (PostgreSQL ve RabbitMQ gerekir, örn. `docker compose up -d postgres rabbitmq`, ve yukarıdaki connection string)
-cd backend/src/OpenSight.Api
-dotnet run
-```
-
-```bash
-# Analiz servisi (Redis, RabbitMQ ve backend gerekir)
-cd analysis-service
-pip install -r requirements.txt
-
-uvicorn app.main:app --reload --port 8001
-```
-
-```bash
-# Trafik simülatörü (http://localhost:8080 adresini hedefler; compose sistemine dahil değildir)
+# Trafik simülatörü
 cd simulator
 pip install -r requirements.txt
+# .env: SIMULATOR_RATE_SCALE, SIMULATOR_DURATION_SECONDS
+
 python traffic_simulator.py
 ```
 
 ```bash
-# Frontend
+# Frontend (geliştirme)
 cd frontend
 npm install
-# opsiyonel: cp .env.example .env.local  (VITE_API_URL, VITE_ANALYSIS_SERVICE_URL; varsayılanlar localhost:8080 / localhost:8001)
+# .env.local: VITE_API_URL, VITE_ANALYSIS_SERVICE_URL
 
 npm run dev
 ```
 
-## Testler
+```bash
+# Değerlendirme
+cd evaluation
+pip install -r requirements.txt
+
+python evaluate.py
+```
+
+### Testler
 
 ```bash
+cd backend
 dotnet test
 ```
 
 ```bash
-cd analysis-service
-python -m pytest tests/ -v
-# Docker olmadan: python -m pytest tests/ -v --ignore=tests/test_integration_pipeline.py
+python -m pytest analysis-service/tests simulator/tests evaluation/tests -v
 ```
 
 ```bash
