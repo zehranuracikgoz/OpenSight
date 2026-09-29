@@ -55,6 +55,11 @@ public class AlertsController : ControllerBase
     public async Task<ActionResult<DashboardSummaryDto>> GetSummary([FromQuery] int hours = 24, CancellationToken ct = default)
         => Ok(await _alertService.GetDashboardSummaryAsync(hours, ct));
 
+    /// evaluation/evaluate.py bunu okuyor - "correlations" literal'i {alertId} route'undan önce eşleşir
+    [HttpGet("correlations")]
+    public async Task<ActionResult<IReadOnlyList<CorrelationEventListItemDto>>> GetCorrelations(CancellationToken ct = default)
+        => Ok(await _alertService.GetCorrelationEventsAsync(ct));
+
     /// tek bir alert'in tüm detayını dönüyor (detay paneli için) - "summary" literal'i bu route'tan önce eşleşir
     [HttpGet("{alertId}")]
     public async Task<ActionResult<AlertDetailDto>> GetById(string alertId, CancellationToken ct)

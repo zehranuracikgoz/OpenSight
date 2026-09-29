@@ -89,6 +89,38 @@ public class AlertsControllerTests
     }
 
     [Fact]
+    public async Task GetCorrelations_ReturnsClientIdAndBothAlertIds()
+    {
+        var db = CreateInMemoryDb();
+        var service = new AlertService(db);
+        var perfId = await service.CreateAlertAsync(new CreateAlertRequest("client_4", "Performans", "Orta", null, 3.5, null, null, null));
+        var behId = await service.CreateAlertAsync(new CreateAlertRequest("client_4", "Davranışsal", "Orta", null, null, 0.8, null, null));
+        await service.CreateCorrelationEventAsync(new CreateCorrelationEventRequest(perfId, behId));
+        var controller = new AlertsController(service);
+
+        var result = await controller.GetCorrelations(CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var items = Assert.IsAssignableFrom<IReadOnlyList<CorrelationEventListItemDto>>(ok.Value);
+        var item = Assert.Single(items);
+        Assert.Equal("client_4", item.ClientId);
+        Assert.Equal(perfId, item.PerformanceAlertId);
+        Assert.Equal(behId, item.BehavioralAlertId);
+    }
+
+    [Fact]
+    public async Task GetCorrelations_NoCorrelations_ReturnsEmptyList()
+    {
+        var db = CreateInMemoryDb();
+        var controller = new AlertsController(new AlertService(db));
+
+        var result = await controller.GetCorrelations(CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Empty(Assert.IsAssignableFrom<IReadOnlyList<CorrelationEventListItemDto>>(ok.Value));
+    }
+
+    [Fact]
     public async Task GetSummary_ReturnsCountsFromDatabase()
     {
         var db = CreateInMemoryDb();

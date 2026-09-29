@@ -126,6 +126,26 @@ public class AlertService : IAlertService
         );
     }
 
+    public async Task<IReadOnlyList<CorrelationEventListItemDto>> GetCorrelationEventsAsync(CancellationToken ct = default)
+    {
+        var correlations = await _db.CorrelationEvents.OrderBy(c => c.DetectedAt).ToListAsync(ct);
+        if (correlations.Count == 0) return Array.Empty<CorrelationEventListItemDto>();
+
+        var alertIds = correlations.Select(c => c.PerformanceAlertId).ToList();
+        var clientIdByAlertId = await _db.Alerts
+            .Where(a => alertIds.Contains(a.AlertId))
+            .ToDictionaryAsync(a => a.AlertId, a => a.ClientId, ct);
+
+        return correlations
+            .Select(c => new CorrelationEventListItemDto(
+                c.CorrelationId,
+                clientIdByAlertId.GetValueOrDefault(c.PerformanceAlertId, ""),
+                c.PerformanceAlertId,
+                c.BehavioralAlertId,
+                c.DetectedAt))
+            .ToList();
+    }
+
     public async Task<DashboardSummaryDto> GetDashboardSummaryAsync(int hours = 24, CancellationToken ct = default)
     {
         var now = DateTime.UtcNow;

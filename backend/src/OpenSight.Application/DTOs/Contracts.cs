@@ -45,6 +45,15 @@ public record AlertListItemDto(
 /// sayfalanmış alarm listesi - TotalCount, sayfalama kontrollerinin "X / Y gösteriliyor" metni için
 public record PagedAlertsDto(IReadOnlyList<AlertListItemDto> Items, int TotalCount);
 
+/// evaluation/evaluate.py korelasyonları buradan çekiyor - ClientId, alarmdan bulunuyor
+public record CorrelationEventListItemDto(
+    string CorrelationId,
+    string ClientId,
+    string PerformanceAlertId,
+    string BehavioralAlertId,
+    DateTime DetectedAt
+);
+
 /// detay panelinin ihtiyaç duyduğu tüm alanlar - ham metrikler, açıklama, onay/sessize durumu, varsa korelasyon
 public record AlertDetailDto(
     string AlertId,
