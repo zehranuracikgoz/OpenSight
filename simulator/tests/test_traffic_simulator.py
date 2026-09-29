@@ -1,3 +1,4 @@
+import json
 import threading
 import time
 
@@ -196,3 +197,80 @@ def test_stop_releases_suspicious_clients_waiting_for_model(tmp_path):
     thread.join(timeout=2)
 
     assert not thread.is_alive()
+
+def test_yogun_burst_provider_calls_on_transition_on_each_phase_change(monkeypatch):
+    monkeypatch.setenv("SIMULATOR_YOGUN_RATE", "5-5")
+    monkeypatch.setenv("SIMULATOR_YOGUN_BURST_RATE", "50-50")
+    monkeypatch.setenv("SIMULATOR_YOGUN_BURST_DURATION", "20-20")
+    monkeypatch.setenv("SIMULATOR_YOGUN_BURST_INTERVAL", "30-30")
+
+    fake_now = [1000.0]
+    monkeypatch.setattr(ts.time, "monotonic", lambda: fake_now[0])
+    seen = []
+
+    provider = ts.YogunBurstRateProvider(on_transition=seen.append)
+    provider()
+    assert seen == []  # henüz gecis yok
+
+    fake_now[0] += 30.0
+    provider()
+    fake_now[0] += 20.0
+    provider()
+
+    assert seen == [True, False]  # once patlamaya girdi, sonra sakine dondu
+
+
+def test_log_burst_event_writes_client_id_and_phase(tmp_path):
+    gt_path = tmp_path / "gt.log"
+    sim = ts.TrafficSimulator("http://api", str(gt_path))
+
+    sim.log_burst_event("client_yogun_0000", True)
+    sim.log_burst_event("client_yogun_0000", False)
+
+    lines = [json.loads(l) for l in open(sim.burst_log_path, encoding="utf-8")]
+    assert [l["phase"] for l in lines] == ["patlama", "sakin"]
+    assert all(l["client_id"] == "client_yogun_0000" for l in lines)
+
+
+def test_burst_log_path_defaults_relative_to_ground_truth_path(tmp_path):
+    gt_path = tmp_path / "gt.log"
+    sim = ts.TrafficSimulator("http://api", str(gt_path))
+
+    assert sim.burst_log_path == str(gt_path) + ".burst"
+
+
+def test_schedule_shutdown_stops_sim_and_server_after_duration():
+    class FakeSim:
+        def __init__(self):
+            self.stopped = False
+
+        def stop(self):
+            self.stopped = True
+
+    class FakeServer:
+        def __init__(self):
+            self.shutdown_called = False
+
+        def shutdown(self):
+            self.shutdown_called = True
+
+    sim, server = FakeSim(), FakeServer()
+    ts.schedule_shutdown(0.05, sim, server)
+
+    assert sim.stopped is False  # henüz erken
+    time.sleep(0.2)
+    assert sim.stopped is True
+    assert server.shutdown_called is True
+
+
+def test_schedule_shutdown_noop_when_duration_not_positive():
+    calls = []
+
+    class FakeServer:
+        def shutdown(self):
+            calls.append("shutdown")
+
+    ts.schedule_shutdown(0, None, FakeServer())
+    time.sleep(0.05)
+
+    assert calls == []

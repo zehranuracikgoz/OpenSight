@@ -63,6 +63,13 @@ class GroundTruthRecord:
     profile: str
 
 
+@dataclass
+class BurstEvent:
+    client_id: str
+    timestamp: str
+    phase: str  # "patlama" | "sakin"
+
+
 def make_client_id(profile: Profile, index: int) -> str:
     return f"client_{profile.value}_{index:04d}"
 
@@ -130,14 +137,15 @@ def constant_rate(rate: float) -> Callable[[], float]:
 
 class YogunBurstRateProvider:
     """yoğun profilin sakin<->patlama arasında salındığı hız sağlayıcısı - her çağrıldığında
-    güncel hızı döndürüyor, geçiş zamanı geldiğinde otomatik olarak faz değiştiriyor"""
+    güncel hızı döndürüyor, faz değişince on_transition(in_burst) çağrılıyor"""
 
-    def __init__(self) -> None:
+    def __init__(self, on_transition: Callable[[bool], None] | None = None) -> None:
         self._scale = rate_scale()
         self._calm_range = rate_range_for(Profile.YOGUN)
         self._burst_range = burst_rate_range()
         self._duration_range = burst_duration_range()
         self._interval_range = burst_interval_range()
+        self._on_transition = on_transition
         self._in_burst = False
         self._current_rate = self._draw_calm()
         self._next_transition = time.monotonic() + random.uniform(*self._interval_range)
@@ -158,6 +166,8 @@ class YogunBurstRateProvider:
             else:
                 self._current_rate = self._draw_calm()
                 self._next_transition = now + random.uniform(*self._interval_range)
+            if self._on_transition:
+                self._on_transition(self._in_burst)
         return self._current_rate
 
 
@@ -169,9 +179,11 @@ class TrafficSimulator:
         analysis_url: str = "http://localhost:8001",
         ready_timeout: float = DEFAULT_READY_TIMEOUT_SECONDS,
         ready_poll_seconds: float = DEFAULT_READY_POLL_SECONDS,
+        burst_log_path: str | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.ground_truth_path = ground_truth_path
+        self.burst_log_path = burst_log_path or (ground_truth_path + ".burst")
         self.analysis_url = analysis_url.rstrip("/")
         self.ready_timeout = ready_timeout
         self.ready_poll_seconds = ready_poll_seconds
@@ -215,6 +227,12 @@ class TrafficSimulator:
             with open(self.ground_truth_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(asdict(record), ensure_ascii=False) + "\n")
 
+    def log_burst_event(self, client_id: str, in_burst: bool) -> None:
+        record = BurstEvent(client_id, datetime.now(timezone.utc).isoformat(), "patlama" if in_burst else "sakin")
+        with self._log_lock:
+            with open(self.burst_log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(asdict(record), ensure_ascii=False) + "\n")
+
     def _client_loop(self, client_id: str, profile: Profile, rate_fn: Callable[[], float]) -> None:
         """tek bir istemci: kendi hızıyla (poisson aralıklarla) istek atıyor, diğerlerini beklemiyor.
         rate_fn güncel hızı döndürüyor - sabit profillerde hep aynı, yoğunda faza göre değişiyor"""
@@ -244,7 +262,11 @@ class TrafficSimulator:
         for profile in Profile:
             for i in range(n_clients_per_profile):
                 client_id = make_client_id(profile, i)
-                rate_fn = YogunBurstRateProvider() if profile is Profile.YOGUN else constant_rate(request_rate_for(profile))
+                rate_fn = (
+                    YogunBurstRateProvider(on_transition=lambda in_burst, cid=client_id: self.log_burst_event(cid, in_burst))
+                    if profile is Profile.YOGUN
+                    else constant_rate(request_rate_for(profile))
+                )
                 print(f"[simulator] {client_id}: ~{rate_fn() * 60:.1f} istek/dk", flush=True)
                 threading.Thread(target=self._client_loop, args=(client_id, profile, rate_fn), daemon=True).start()
 
@@ -299,6 +321,21 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         pass
 
 
+def schedule_shutdown(duration_seconds: float, sim: TrafficSimulator | None, server: HTTPServer) -> None:
+    """duration_seconds sonra sim'i durdurup health sunucusunu kapatıyor - <=0 ise hiçbir şey yapmıyor"""
+    if duration_seconds <= 0:
+        return
+
+    def _shutdown() -> None:
+        time.sleep(duration_seconds)
+        print(f"[simulator] süre doldu ({duration_seconds:.0f}s), kapanıyor", flush=True)
+        if sim is not None:
+            sim.stop()
+        server.shutdown()
+
+    threading.Thread(target=_shutdown, daemon=True).start()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="OpenSight trafik simülatörü")
     parser.add_argument(
@@ -318,13 +355,23 @@ def main() -> None:
     parser.add_argument(
         "--clients-per-profile", type=int, default=int(os.environ.get("SIMULATOR_CLIENTS_PER_PROFILE", "3"))
     )
+    parser.add_argument(
+        # <=0 sınırsız (Render varsayılanı), değerlendirme koşularında set ediliyor
+        "--duration-seconds",
+        type=float,
+        default=float(os.environ.get("SIMULATOR_DURATION_SECONDS", "0")),
+    )
     args = parser.parse_args()
 
     keep_alive = KeepAliveService()
     keep_alive_thread = threading.Thread(target=keep_alive.run, daemon=True)
     keep_alive_thread.start()
 
+    port = int(os.environ.get("PORT", "10000"))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+
     # kapalıyken yalnızca health sunucusu + keep-alive çalışıyor, mock API'ye ve RabbitMQ'ya hiç trafik gitmiyor
+    sim = None
     if env_flag("SIMULATOR_TRAFFIC_ENABLED", True):
         sim = TrafficSimulator(
             args.base_url,
@@ -337,10 +384,11 @@ def main() -> None:
     else:
         print("[simulator] SIMULATOR_TRAFFIC_ENABLED=false, trafik üretilmiyor (yalnızca health + keep-alive)", flush=True)
 
-    port = int(os.environ.get("PORT", "10000"))
-    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    schedule_shutdown(args.duration_seconds, sim, server)
+
     print(f"[simulator] health check sunucusu -> 0.0.0.0:{port}", flush=True)
     server.serve_forever()
+    print("[simulator] kapandı", flush=True)
 
 
 if __name__ == "__main__":
