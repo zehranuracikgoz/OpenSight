@@ -60,12 +60,14 @@ DEFAULT_YOGUN_BURST_RATE_RANGE = (20.0, 40.0)
 DEFAULT_YOGUN_BURST_DURATION_RANGE = (20.0, 40.0)
 DEFAULT_YOGUN_BURST_INTERVAL_RANGE = (120.0, 240.0)
 
-# "canlı demoyu başlat" butonunun ayarları - istek_orani mutlak olduğundan baseline'la aynı ölçek olmalı
-DEFAULT_DEMO_RATE_SCALE = 0.02
-DEFAULT_DEMO_DURATION_SECONDS = 600.0
-DEFAULT_DEMO_MAX_DURATION_SECONDS = 900.0
+# "canlı demoyu başlat" ayarları - 0.1 kasıtlı: mock API'yi bükmek yerine değerlendirdiğimiz ölçekle eşitliyoruz
+DEFAULT_DEMO_RATE_SCALE = 0.1
+DEFAULT_DEMO_DURATION_SECONDS = 300.0
+DEFAULT_DEMO_MAX_DURATION_SECONDS = 300.0
 DEFAULT_DEMO_COOLDOWN_SECONDS = 600.0
 DEFAULT_DEMO_DAILY_LIMIT = 3
+# ölçüm: demo başına ~22K Redis komutu (pipeline MULTI/EXEC de sayılıyor) - 20/ay güvenli, 35 taşardı
+DEFAULT_DEMO_MONTHLY_LIMIT = 20
 DEFAULT_DEMO_WAKE_TIMEOUT_SECONDS = 90.0
 DEFAULT_DEMO_KEEPALIVE_INTERVAL_SECONDS = 300.0
 
@@ -88,6 +90,10 @@ def demo_max_duration() -> float:
 
 def demo_cooldown_seconds() -> float:
     return float(os.environ.get("SIMULATOR_DEMO_COOLDOWN_SECONDS", str(DEFAULT_DEMO_COOLDOWN_SECONDS)))
+
+
+def demo_monthly_limit() -> int:
+    return int(os.environ.get("SIMULATOR_DEMO_MONTHLY_LIMIT", str(DEFAULT_DEMO_MONTHLY_LIMIT)))
 
 
 def demo_daily_limit() -> int:
@@ -344,14 +350,19 @@ class DemoQuota:
 
     LAST_STARTED_KEY = "demo:last_started_at"
     COUNT_KEY_PREFIX = "demo:count:"
+    MONTH_COUNT_KEY_PREFIX = "demo:count:month:"
 
-    def __init__(self, redis_client: Redis, cooldown_seconds: float, daily_limit: int):
+    def __init__(self, redis_client: Redis, cooldown_seconds: float, daily_limit: int, monthly_limit: int):
         self.redis = redis_client
         self.cooldown_seconds = cooldown_seconds
         self.daily_limit = daily_limit
+        self.monthly_limit = monthly_limit
 
     def _day_key(self) -> str:
         return self.COUNT_KEY_PREFIX + datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    def _month_key(self) -> str:
+        return self.MONTH_COUNT_KEY_PREFIX + datetime.now(timezone.utc).strftime("%Y-%m")
 
     def check(self) -> tuple[bool, str | None]:
         last = self.redis.get(self.LAST_STARTED_KEY)
@@ -361,18 +372,23 @@ class DemoQuota:
                 wait = self.cooldown_seconds - elapsed
                 return False, f"çok yakın zamanda bir demo çalıştı, {wait:.0f}s sonra tekrar deneyin"
 
-        count = int(self.redis.get(self._day_key()) or 0)
-        if count >= self.daily_limit:
+        daily_count = int(self.redis.get(self._day_key()) or 0)
+        if daily_count >= self.daily_limit:
             return False, f"bugünkü demo sınırına ({self.daily_limit}) ulaşıldı, yarın tekrar deneyin"
+
+        monthly_count = int(self.redis.get(self._month_key()) or 0)
+        if monthly_count >= self.monthly_limit:
+            return False, f"bu ayın demo hakkı doldu (aylık sınır: {self.monthly_limit}), gelecek ay tekrar deneyin"
 
         return True, None
 
     def record_start(self) -> None:
-        key = self._day_key()
         pipe = self.redis.pipeline()
         pipe.set(self.LAST_STARTED_KEY, str(time.time()))
-        pipe.incr(key)
-        pipe.expire(key, 2 * 24 * 3600)
+        pipe.incr(self._day_key())
+        pipe.expire(self._day_key(), 2 * 24 * 3600)
+        pipe.incr(self._month_key())
+        pipe.expire(self._month_key(), 40 * 24 * 3600)  # ay anahtarı kendinden tarihli, uzun TTL sadece temizlik için
         pipe.execute()
 
 
@@ -627,7 +643,7 @@ def main() -> None:
         redis_client,
         args.base_url,
         args.analysis_url,
-        DemoQuota(redis_client, demo_cooldown_seconds(), demo_daily_limit()),
+        DemoQuota(redis_client, demo_cooldown_seconds(), demo_daily_limit(), demo_monthly_limit()),
         clients_per_profile=args.clients_per_profile,
     )
 

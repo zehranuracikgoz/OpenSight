@@ -304,13 +304,13 @@ def test_record_active_scale_writes_to_redis():
 
 class TestDemoQuota:
     def test_allows_first_start(self):
-        quota = ts.DemoQuota(_fake_redis(), cooldown_seconds=600, daily_limit=3)
+        quota = ts.DemoQuota(_fake_redis(), cooldown_seconds=600, daily_limit=3, monthly_limit=35)
         ok, reason = quota.check()
         assert ok is True and reason is None
 
     def test_blocks_within_cooldown(self):
         r = _fake_redis()
-        quota = ts.DemoQuota(r, cooldown_seconds=600, daily_limit=3)
+        quota = ts.DemoQuota(r, cooldown_seconds=600, daily_limit=3, monthly_limit=35)
         quota.record_start()
 
         ok, reason = quota.check()
@@ -320,7 +320,7 @@ class TestDemoQuota:
 
     def test_allows_after_cooldown_elapses(self):
         r = _fake_redis()
-        quota = ts.DemoQuota(r, cooldown_seconds=1, daily_limit=3)
+        quota = ts.DemoQuota(r, cooldown_seconds=1, daily_limit=3, monthly_limit=35)
         quota.record_start()
         time.sleep(1.1)
 
@@ -330,7 +330,7 @@ class TestDemoQuota:
 
     def test_blocks_after_daily_limit_reached(self):
         r = _fake_redis()
-        quota = ts.DemoQuota(r, cooldown_seconds=0, daily_limit=2)
+        quota = ts.DemoQuota(r, cooldown_seconds=0, daily_limit=2, monthly_limit=35)
         quota.record_start()
         quota.record_start()
 
@@ -341,7 +341,7 @@ class TestDemoQuota:
 
     def test_daily_limit_is_per_calendar_day(self):
         r = _fake_redis()
-        quota = ts.DemoQuota(r, cooldown_seconds=0, daily_limit=1)
+        quota = ts.DemoQuota(r, cooldown_seconds=0, daily_limit=1, monthly_limit=100)
         # başka bir günün sayacı dolu ama bugünkü anahtar hâlâ boş
         r.set(quota.COUNT_KEY_PREFIX + "2000-01-01", "99")
 
@@ -349,11 +349,46 @@ class TestDemoQuota:
 
         assert ok is True  # farklı günün sayacı bugünü etkilemiyor
 
+    def test_blocks_after_monthly_limit_reached(self):
+        r = _fake_redis()
+        quota = ts.DemoQuota(r, cooldown_seconds=0, daily_limit=100, monthly_limit=2)
+        quota.record_start()
+        quota.record_start()
+
+        ok, reason = quota.check()
+
+        assert ok is False
+        assert "bu ayın demo hakkı doldu" in reason
+
+    def test_monthly_limit_is_per_calendar_month(self):
+        r = _fake_redis()
+        quota = ts.DemoQuota(r, cooldown_seconds=0, daily_limit=100, monthly_limit=1)
+        # başka bir ayın sayacı dolu ama bu ayın anahtarı hâlâ boş
+        r.set(quota.MONTH_COUNT_KEY_PREFIX + "2000-01", "99")
+
+        ok, _ = quota.check()
+
+        assert ok is True  # farklı ayın sayacı bu ayı etkilemiyor
+
+    def test_record_start_increments_both_daily_and_monthly_counters(self):
+        r = _fake_redis()
+        quota = ts.DemoQuota(r, cooldown_seconds=0, daily_limit=100, monthly_limit=100)
+
+        quota.record_start()
+
+        assert int(r.get(quota._day_key())) == 1
+        assert int(r.get(quota._month_key())) == 1
+
 
 class TestDemoController:
     def _controller(self, redis_client=None, **kwargs):
         redis_client = redis_client or _fake_redis()
-        quota = ts.DemoQuota(redis_client, cooldown_seconds=kwargs.pop("cooldown", 600), daily_limit=kwargs.pop("limit", 3))
+        quota = ts.DemoQuota(
+            redis_client,
+            cooldown_seconds=kwargs.pop("cooldown", 600),
+            daily_limit=kwargs.pop("limit", 3),
+            monthly_limit=kwargs.pop("monthly", 100),
+        )
         return ts.DemoController(redis_client, "http://api", "http://analysis", quota, **kwargs)
 
     def test_status_starts_idle(self):
@@ -443,7 +478,7 @@ class TestDemoHttpEndpoints:
     def _start_server(self, port):
         server = ts.HTTPServer(("127.0.0.1", port), ts.HealthCheckHandler)
         r = _fake_redis()
-        quota = ts.DemoQuota(r, cooldown_seconds=600, daily_limit=3)
+        quota = ts.DemoQuota(r, cooldown_seconds=600, daily_limit=3, monthly_limit=100)
         server.demo_controller = ts.DemoController(r, "http://api", "http://analysis", quota)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
