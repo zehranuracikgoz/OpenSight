@@ -10,6 +10,10 @@ analiz servisinin /status'u model_ready dönene kadar bekliyor.
 yoğun sabit hızla değil sakin/patlama arasında gidiyor (SIMULATOR_YOGUN_BURST_*) - sabit yüksek hız
 RollingZScoreDetector'ın 50'lik penceresinde bir süre sonra normal sayılır, patlama başlangıcı ise
 pencere hâlâ sakinken geldiği için z-score'u güvenilir tetikliyor.
+
+DemoController, dashboard'daki "Canlı demoyu başlat" butonuna hizmet ediyor (POST /demo/start,
+GET /demo/status): API+analiz servisini uyandırıp SIMULATOR_DEMO_RATE_SCALE ile süreli bir
+TrafficSimulator koşusu başlatıyor. Kötüye kullanım koruması (cooldown + günlük limit) Redis'te.
 """
 from __future__ import annotations
 
@@ -26,6 +30,7 @@ from enum import Enum
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import requests
+from redis import Redis
 
 
 class Profile(str, Enum):
@@ -54,6 +59,55 @@ DEFAULT_YOGUN_BURST_RATE_RANGE = (20.0, 40.0)
 # patlama/sakin süresi gerçek saniye - SIMULATOR_RATE_SCALE bunu etkilemiyor, o sadece hacmi düşürüyor
 DEFAULT_YOGUN_BURST_DURATION_RANGE = (20.0, 40.0)
 DEFAULT_YOGUN_BURST_INTERVAL_RANGE = (120.0, 240.0)
+
+# "canlı demoyu başlat" butonunun ayarları - istek_orani mutlak olduğundan baseline'la aynı ölçek olmalı
+DEFAULT_DEMO_RATE_SCALE = 0.02
+DEFAULT_DEMO_DURATION_SECONDS = 600.0
+DEFAULT_DEMO_MAX_DURATION_SECONDS = 900.0
+DEFAULT_DEMO_COOLDOWN_SECONDS = 600.0
+DEFAULT_DEMO_DAILY_LIMIT = 3
+DEFAULT_DEMO_WAKE_TIMEOUT_SECONDS = 90.0
+DEFAULT_DEMO_KEEPALIVE_INTERVAL_SECONDS = 300.0
+
+# cold_start.py'deki BASELINE_SCALE_KEY/SIMULATOR_ACTIVE_SCALE_KEY ile aynı olmalı
+BASELINE_SCALE_KEY = "behavioral:baseline:scale"
+SIMULATOR_ACTIVE_SCALE_KEY = "simulator:active_scale"
+
+
+def demo_rate_scale() -> float:
+    return float(os.environ.get("SIMULATOR_DEMO_RATE_SCALE", str(DEFAULT_DEMO_RATE_SCALE)))
+
+
+def demo_default_duration() -> float:
+    return float(os.environ.get("SIMULATOR_DEMO_DEFAULT_SECONDS", str(DEFAULT_DEMO_DURATION_SECONDS)))
+
+
+def demo_max_duration() -> float:
+    return float(os.environ.get("SIMULATOR_DEMO_MAX_SECONDS", str(DEFAULT_DEMO_MAX_DURATION_SECONDS)))
+
+
+def demo_cooldown_seconds() -> float:
+    return float(os.environ.get("SIMULATOR_DEMO_COOLDOWN_SECONDS", str(DEFAULT_DEMO_COOLDOWN_SECONDS)))
+
+
+def demo_daily_limit() -> int:
+    return int(os.environ.get("SIMULATOR_DEMO_DAILY_LIMIT", str(DEFAULT_DEMO_DAILY_LIMIT)))
+
+
+def demo_wake_timeout() -> float:
+    return float(os.environ.get("SIMULATOR_DEMO_WAKE_TIMEOUT", str(DEFAULT_DEMO_WAKE_TIMEOUT_SECONDS)))
+
+
+def demo_keepalive_interval() -> float:
+    return float(os.environ.get("SIMULATOR_DEMO_KEEPALIVE_INTERVAL", str(DEFAULT_DEMO_KEEPALIVE_INTERVAL_SECONDS)))
+
+
+def record_active_scale(redis_client: Redis, scale: float) -> None:
+    """trafiğe her başladığında çağrılıyor - analiz servisi baseline'ı fit ederken bunu okuyor"""
+    try:
+        redis_client.set(SIMULATOR_ACTIVE_SCALE_KEY, str(scale))
+    except Exception as exc:
+        print(f"[simulator] aktif ölçek Redis'e yazılamadı: {exc}", flush=True)
 
 
 @dataclass
@@ -90,7 +144,17 @@ def parse_rate_range(text: str) -> tuple[float, float]:
     return low, high
 
 
+_scale_override: float | None = None  # demo çalışırken SIMULATOR_RATE_SCALE yerine bunu kullan
+
+
+def set_scale_override(scale: float | None) -> None:
+    global _scale_override
+    _scale_override = scale
+
+
 def rate_scale() -> float:
+    if _scale_override is not None:
+        return _scale_override
     scale = float(os.environ.get("SIMULATOR_RATE_SCALE", DEFAULT_RATE_SCALE))
     if scale <= 0:
         raise ValueError("SIMULATOR_RATE_SCALE 0'dan büyük olmalı")
@@ -275,47 +339,227 @@ class TrafficSimulator:
         self._suspicious_go.set()
 
 
-class KeepAliveService:
-    """Render gibi ücretsiz servislerde uyku moduna geçmemeleri için servisleri periyodik pingliyor"""
+class DemoQuota:
+    """kötüye kullanım koruması - Render'da process her uykuya geçişte sıfırlandığı için Redis'te"""
 
-    def __init__(self, interval_seconds: float = 600.0):
-        self.interval_seconds = interval_seconds
-        api_url = os.environ.get("OPENSIGHT_API_URL", "http://localhost:8080").rstrip("/")
-        analysis_url = os.environ.get("OPENSIGHT_ANALYSIS_URL", "http://localhost:8001").rstrip("/")
-        simulator_url = os.environ.get("OPENSIGHT_SIMULATOR_URL", "http://localhost:10000").rstrip("/")
-        self.targets = {
-            "opensight-api": f"{api_url}/health",
-            "opensight-analysis": f"{analysis_url}/health",
-            "opensight-simulator": f"{simulator_url}/health",
-        }
+    LAST_STARTED_KEY = "demo:last_started_at"
+    COUNT_KEY_PREFIX = "demo:count:"
 
-    def _ping(self, name: str, url: str) -> None:
+    def __init__(self, redis_client: Redis, cooldown_seconds: float, daily_limit: int):
+        self.redis = redis_client
+        self.cooldown_seconds = cooldown_seconds
+        self.daily_limit = daily_limit
+
+    def _day_key(self) -> str:
+        return self.COUNT_KEY_PREFIX + datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    def check(self) -> tuple[bool, str | None]:
+        last = self.redis.get(self.LAST_STARTED_KEY)
+        if last is not None:
+            elapsed = time.time() - float(last)
+            if elapsed < self.cooldown_seconds:
+                wait = self.cooldown_seconds - elapsed
+                return False, f"çok yakın zamanda bir demo çalıştı, {wait:.0f}s sonra tekrar deneyin"
+
+        count = int(self.redis.get(self._day_key()) or 0)
+        if count >= self.daily_limit:
+            return False, f"bugünkü demo sınırına ({self.daily_limit}) ulaşıldı, yarın tekrar deneyin"
+
+        return True, None
+
+    def record_start(self) -> None:
+        key = self._day_key()
+        pipe = self.redis.pipeline()
+        pipe.set(self.LAST_STARTED_KEY, str(time.time()))
+        pipe.incr(key)
+        pipe.expire(key, 2 * 24 * 3600)
+        pipe.execute()
+
+
+class DemoController:
+    """dashboard'daki "Canlı demoyu başlat" butonunun sunucu tarafı - tek seferde tek demo,
+    aşamalar: boşta -> uyanıyor -> model_hazirlaniyor -> calisiyor -> bitti"""
+
+    def __init__(
+        self,
+        redis_client: Redis,
+        base_url: str,
+        analysis_url: str,
+        quota: DemoQuota,
+        clients_per_profile: int = 3,
+    ):
+        self.redis = redis_client
+        self.base_url = base_url.rstrip("/")
+        self.analysis_url = analysis_url.rstrip("/")
+        self.quota = quota
+        self.clients_per_profile = clients_per_profile
+        self._lock = threading.Lock()
+        self._state = "bosta"
+        self._sim: TrafficSimulator | None = None
+        self._started_at: float | None = None
+        self._duration_seconds = 0.0
+        self._error: str | None = None
+
+    def status(self) -> dict:
+        with self._lock:
+            remaining = None
+            if self._state == "calisiyor" and self._started_at is not None:
+                remaining = max(0.0, self._duration_seconds - (time.monotonic() - self._started_at))
+            return {
+                "state": self._state,
+                "remaining_seconds": remaining,
+                "duration_seconds": self._duration_seconds if self._state == "calisiyor" else None,
+                "error": self._error,
+            }
+
+    def _scale_mismatch(self) -> str | None:
+        baseline_scale_raw = self.redis.get(BASELINE_SCALE_KEY)
+        if baseline_scale_raw is None:
+            return None  # henüz baseline yok, karşılaştırılacak bir şey yok
+        baseline_scale = float(baseline_scale_raw)
+        scale = demo_rate_scale()
+        if abs(baseline_scale - scale) > 1e-9:
+            return (
+                f"baseline {baseline_scale} ölçeğinde toplanmış ama demo {scale} kullanıyor - "
+                "istek_orani mutlak olduğundan ikisi eşleşmeli, önce baseline'ı bu ölçekte yeniden topla"
+            )
+        return None
+
+    def start(self, duration_seconds: float | None) -> tuple[bool, str | None]:
+        with self._lock:
+            if self._state in ("uyaniyor", "model_hazirlaniyor", "calisiyor"):
+                return False, "zaten çalışıyor"
+            ok, reason = self.quota.check()
+            if not ok:
+                return False, reason
+            mismatch = self._scale_mismatch()
+            if mismatch:
+                return False, mismatch
+            self._state = "uyaniyor"
+            self._error = None
+
+        duration = min(max(duration_seconds or demo_default_duration(), 60.0), demo_max_duration())
+        threading.Thread(target=self._run, args=(duration,), daemon=True).start()
+        return True, None
+
+    def _ping_once(self, base_url: str) -> bool:
         try:
-            response = requests.get(url, timeout=5)
-            print(f"[keep-alive] pinged {name} -> {response.status_code}", flush=True)
-        except requests.RequestException as exc:
-            print(f"[keep-alive] {name} adresine ulaşılamadı: {exc}", flush=True)
+            return requests.get(f"{base_url}/health", timeout=5).status_code == 200
+        except requests.RequestException:
+            return False
 
-    def run(self) -> None:
-        while True:
-            for name, url in self.targets.items():
-                self._ping(name, url)
-            time.sleep(self.interval_seconds)
+    def _wait_awake(self, base_url: str, deadline: float) -> bool:
+        while time.monotonic() < deadline:
+            if self._ping_once(base_url):
+                return True
+            time.sleep(2.0)
+        return self._ping_once(base_url)
+
+    def _run(self, duration: float) -> None:
+        # ikisini de paralel uyandır - biri diğerini bekleyip zaman kaybetmesin
+        threading.Thread(target=self._ping_once, args=(self.base_url,), daemon=True).start()
+        threading.Thread(target=self._ping_once, args=(self.analysis_url,), daemon=True).start()
+
+        deadline = time.monotonic() + demo_wake_timeout()
+        api_awake = self._wait_awake(self.base_url, deadline)
+        analysis_awake = self._wait_awake(self.analysis_url, deadline)
+        if not (api_awake and analysis_awake):
+            with self._lock:
+                self._state = "bosta"
+                self._error = "servisler uyanmadı, tekrar deneyin"
+            return
+
+        with self._lock:
+            self._state = "model_hazirlaniyor"
+
+        scale = demo_rate_scale()
+        set_scale_override(scale)
+        record_active_scale(self.redis, scale)
+        sim = TrafficSimulator(
+            self.base_url, ground_truth_path=os.devnull, analysis_url=self.analysis_url,
+            ready_timeout=demo_wake_timeout() * 10,  # cold start uzun sürebilir, sabırlı ol
+        )
+        with self._lock:
+            self._sim = sim
+        sim.run(self.clients_per_profile)
+        sim._suspicious_go.wait()  # model hazır oldu ya da ready_timeout doldu
+
+        with self._lock:
+            self._state = "calisiyor"
+            self._started_at = time.monotonic()
+            self._duration_seconds = duration
+        self.quota.record_start()
+
+        keepalive_stop = threading.Event()
+        threading.Thread(target=self._keep_awake_loop, args=(keepalive_stop,), daemon=True).start()
+
+        sim._stop.wait(duration)
+        sim.stop()
+        keepalive_stop.set()
+
+        with self._lock:
+            self._state = "bitti"
+            self._sim = None
+
+    def _keep_awake_loop(self, stop_event: threading.Event) -> None:
+        """demo çalışırken API + analiz servisini uyanık tutuyor (simülatör kendi /demo/status'uyla uyanıyor)"""
+        interval = demo_keepalive_interval()
+        while not stop_event.wait(interval):
+            self._ping_once(self.base_url)
+            self._ping_once(self.analysis_url)
 
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
+    """/, /health sabit yanıt; /demo/status, /demo/start server.demo_controller'a gidiyor.
+    Tarayıcıdan çağrıldığı için CORS + OPTIONS burada elle ekleniyor"""
+
+    def _cors_origin(self) -> str:
+        return os.environ.get("CORS_ORIGIN", "http://localhost:5173")
+
+    def _send_json(self, status: int, payload: dict) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Access-Control-Allow-Origin", self._cors_origin())
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", self._cors_origin())
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self) -> None:
         if self.path in ("/", "/health"):
-            body = json.dumps({"status": "healthy"}).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type" , "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
+            self._send_json(200, {"status": "healthy"})
+        elif self.path == "/demo/status":
+            self._send_json(200, self.server.demo_controller.status())
         else:
-            self.send_response(404)
-            self.end_headers()
+            self._send_json(404, {"error": "bulunamadı"})
+
+    def do_POST(self) -> None:
+        if self.path != "/demo/start":
+            self._send_json(404, {"error": "bulunamadı"})
+            return
+
+        length = int(self.headers.get("Content-Length") or 0)
+        duration_seconds = None
+        if length > 0:
+            try:
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                duration_seconds = payload.get("duration_seconds")
+            except (ValueError, json.JSONDecodeError):
+                pass
+
+        ok, reason = self.server.demo_controller.start(duration_seconds)
+        if ok:
+            self._send_json(200, self.server.demo_controller.status())
+        else:
+            self._send_json(409, {"error": reason})
 
     def log_message(self, format: str, *args) -> None:
         pass
@@ -334,6 +578,18 @@ def schedule_shutdown(duration_seconds: float, sim: TrafficSimulator | None, ser
         server.shutdown()
 
     threading.Thread(target=_shutdown, daemon=True).start()
+
+
+def build_redis_client() -> Redis:
+    """analiz servisiyle aynı env var kuralları (REDIS_URL varsa Upstash gibi TLS URL'i, yoksa host/port)"""
+    redis_url = os.environ.get("REDIS_URL", "")
+    if redis_url:
+        return Redis.from_url(redis_url, decode_responses=True)
+    return Redis(
+        host=os.environ.get("REDIS_HOST", "localhost"),
+        port=int(os.environ.get("REDIS_PORT", "6379")),
+        decode_responses=True,
+    )
 
 
 def main() -> None:
@@ -363,16 +619,22 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    keep_alive = KeepAliveService()
-    keep_alive_thread = threading.Thread(target=keep_alive.run, daemon=True)
-    keep_alive_thread.start()
+    redis_client = build_redis_client()
 
     port = int(os.environ.get("PORT", "10000"))
     server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.demo_controller = DemoController(
+        redis_client,
+        args.base_url,
+        args.analysis_url,
+        DemoQuota(redis_client, demo_cooldown_seconds(), demo_daily_limit()),
+        clients_per_profile=args.clients_per_profile,
+    )
 
-    # kapalıyken yalnızca health sunucusu + keep-alive çalışıyor, mock API'ye ve RabbitMQ'ya hiç trafik gitmiyor
+    # kapalıyken yalnızca health sunucusu çalışıyor - uyanık kalmak artık demo butonuna bağlı, 7/24 keep-alive yok
     sim = None
     if env_flag("SIMULATOR_TRAFFIC_ENABLED", True):
+        record_active_scale(redis_client, rate_scale())
         sim = TrafficSimulator(
             args.base_url,
             args.ground_truth_path,
@@ -382,7 +644,7 @@ def main() -> None:
         )
         sim.run(args.clients_per_profile)
     else:
-        print("[simulator] SIMULATOR_TRAFFIC_ENABLED=false, trafik üretilmiyor (yalnızca health + keep-alive)", flush=True)
+        print("[simulator] SIMULATOR_TRAFFIC_ENABLED=false, trafik yalnızca demo butonuyla başlıyor", flush=True)
 
     schedule_shutdown(args.duration_seconds, sim, server)
 

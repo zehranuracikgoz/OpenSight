@@ -3,6 +3,7 @@ import { getDashboardSummary, getRecentAlerts } from '../api/client';
 import type { AlertListItem, DashboardSummary } from '../api/types';
 import { AlertsTable } from '../components/AlertsTable';
 import { CorrelationDetailPanel } from '../components/CorrelationDetailPanel';
+import { DemoControl } from '../components/DemoControl';
 import { LatencyChart } from '../components/LatencyChart';
 import { MetricCard, type MetricTrend } from '../components/MetricCard';
 import styles from './Dashboard.module.css';
@@ -63,6 +64,7 @@ export function Dashboard() {
   return (
     <div>
       <div className={styles.toolbar}>
+        <DemoControl />
         <label className={styles.timeRangeLabel}>
           Zaman Aralığı:{' '}
           <select

@@ -1,6 +1,7 @@
 import type {
   AlertDetail,
   DashboardSummary,
+  DemoStatus,
   PagedAlerts,
   ThresholdSettings,
   UpdateThresholdSettingsPayload,
@@ -8,6 +9,7 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 const ANALYSIS_SERVICE_URL = import.meta.env.VITE_ANALYSIS_SERVICE_URL ?? 'http://localhost:8001';
+const SIMULATOR_URL = import.meta.env.VITE_SIMULATOR_URL ?? 'http://localhost:10000';
 
 async function getJson<T>(path: string):Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`);
@@ -61,6 +63,50 @@ export function acknowledgeAlert(alertId: string): Promise<void> {
 
 export function silenceAlert(alertId: string):Promise<void> {
   return postAction(`/api/alerts/${alertId}/silence`);
+}
+
+// Render'da uyuyan servis ilk isteğe ~1 dk'da yanıt verebiliyor, bu yüzden kısa aralıklarla tekrar deniyor
+async function fetchWithRetry(url: string, options: RequestInit, retries = 8, delayMs = 4000): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), delayMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (err) {
+      if (attempt >= retries) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
+export async function checkApiAwake(retries = 15, delayMs = 4000): Promise<boolean> {
+  try {
+    await fetchWithRetry(`${API_BASE_URL}/health`, {}, retries, delayMs);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function getDemoStatus(): Promise<DemoStatus> {
+  return fetch(`${SIMULATOR_URL}/demo/status`).then((r) => r.json() as Promise<DemoStatus>);
+}
+
+export async function startDemo(durationSeconds?: number): Promise<DemoStatus> {
+  const response = await fetchWithRetry(`${SIMULATOR_URL}/demo/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(durationSeconds ? { duration_seconds: durationSeconds } : {}),
+  });
+  const body = (await response.json()) as DemoStatus & { error?: string };
+  if (!response.ok) {
+    throw new Error(body.error ?? `demo başlatılamadı: ${response.status}`);
+  }
+  return body;
 }
 
 export function getThresholdSettings(): Promise<ThresholdSettings> {

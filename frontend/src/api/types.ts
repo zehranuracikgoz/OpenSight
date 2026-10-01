@@ -53,3 +53,11 @@ export interface UpdateThresholdSettingsPayload {
   z_score_threshold?: number;
   contamination?:number;
 }
+
+// simülatörün (Python, VITE_SIMULATOR_URL) döndürdüğü demo durumu - alanlar snake_case
+export interface DemoStatus {
+  state: 'bosta' | 'uyaniyor' | 'model_hazirlaniyor' | 'calisiyor' | 'bitti';
+  remaining_seconds: number | null;
+  duration_seconds: number | null;
+  error: string | null;
+}

@@ -31,6 +31,10 @@ MIN_BASELINE_SAMPLES = 30
 # istemci başına en fazla bu aralıkla örnek alınıyor - yoksa yoğun istemci baseline'ı basıyor, normal kayboluyor
 BASELINE_MIN_GAP_SECONDS = 5.0
 
+# istek_orani mutlak (req/s) - baseline'ı hangi ölçekte topladığımızı kaydediyoruz (demo 0.02 ≠ baseline 0.1 olabilir)
+BASELINE_SCALE_KEY = "behavioral:baseline:scale"
+SIMULATOR_ACTIVE_SCALE_KEY = "simulator:active_scale"
+
 
 class ColdStartManager:
     def __init__(
@@ -75,6 +79,16 @@ class ColdStartManager:
     def baseline_size(self) -> int:
         return self.redis.llen(BASELINE_KEY)
 
+    def baseline_scale(self) -> float | None:
+        raw = self.redis.get(BASELINE_SCALE_KEY)
+        return float(raw) if raw is not None else None
+
+    def _record_baseline_scale(self) -> None:
+        """baseline'ı hangi ölçekte topladığımızı kaydediyor - anahtar yoksa hiçbir şey yazmıyor"""
+        active_scale = self.redis.get(SIMULATOR_ACTIVE_SCALE_KEY)
+        if active_scale is not None:
+            self.redis.set(BASELINE_SCALE_KEY, active_scale)
+
     def is_in_cold_start(self) -> bool:
         return not self._completed and (time.monotonic() - self.start_time) < self.cold_start_seconds
 
@@ -107,5 +121,6 @@ class ColdStartManager:
             return
 
         self.behavioral_detector.fit(baseline)
+        self._record_baseline_scale()
         self._completed = True
         logger.info("cold start tamamlandı, model %d örnekle eğitildi, canlı tespite geçiliyor", len(baseline))

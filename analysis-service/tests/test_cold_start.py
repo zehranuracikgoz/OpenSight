@@ -127,3 +127,30 @@ def test_thinning_is_tracked_independently_per_client(redis_client):
     manager.handle("b", [0.5, 0.5, 40.0], 1000.5)  # farklı istemci, aralık şartına takılmamalı
 
     assert redis_client.llen("behavioral:baseline:v2") == 2
+
+
+def test_records_baseline_scale_from_simulator_active_scale_on_fresh_fit(redis_client):
+    redis_client.set("simulator:active_scale", "0.02")
+    manager = ColdStartManager(redis_client, BehavioralAnomalyDetector(), cold_start_seconds=90)
+    for i in range(30):
+        manager.handle("c1", [0.5, 0.5, 40.0], 1000.0 + i * 10)
+    manager.start_time -= 1000
+    manager.handle("c1", [0.5, 0.5, 40.0], 2000.0)
+
+    assert manager.baseline_scale() == pytest.approx(0.02)
+
+
+def test_baseline_scale_is_none_when_simulator_never_reported_it(redis_client):
+    manager = ColdStartManager(redis_client, BehavioralAnomalyDetector(), cold_start_seconds=90)
+    for i in range(30):
+        manager.handle("c1", [0.5, 0.5, 40.0], 1000.0 + i * 10)
+    manager.start_time -= 1000
+    manager.handle("c1", [0.5, 0.5, 40.0], 2000.0)
+
+    assert manager.baseline_scale() is None
+
+
+def test_baseline_scale_none_when_baseline_never_collected(redis_client):
+    manager = ColdStartManager(redis_client, BehavioralAnomalyDetector(), cold_start_seconds=90)
+
+    assert manager.baseline_scale() is None

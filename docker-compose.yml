@@ -76,6 +76,23 @@ services:
       OLLAMA_MODEL: "llama3.2:1b"
       DASHBOARD_ORIGIN: "http://localhost:8090"
 
+  simulator:
+    build:
+      context: ./simulator
+    depends_on:
+      - api
+      - analysis-service
+      - redis
+    ports:
+      - "10000:10000"
+    environment:
+      OPENSIGHT_API_URL: "http://api:8080"
+      OPENSIGHT_ANALYSIS_URL: "http://analysis-service:8001"
+      REDIS_HOST: "redis"
+      CORS_ORIGIN: "http://localhost:8090"
+      # trafik artik dashboard'daki "Canli Demoyu Baslat" butonuyla (/demo/start) tetikleniyor
+      SIMULATOR_TRAFFIC_ENABLED: "false"
+
   frontend:
     build:
       context: ./frontend
@@ -84,9 +101,11 @@ services:
         # container-ici servis adlari degil, host'tan erisilebilir adresler olmali
         VITE_API_URL: "http://localhost:8080"
         VITE_ANALYSIS_SERVICE_URL: "http://localhost:8001"
+        VITE_SIMULATOR_URL: "http://localhost:10000"
     depends_on:
       - api
       - analysis-service
+      - simulator
     ports:
       - "8090:80"
 

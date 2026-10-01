@@ -1,0 +1,44 @@
+.container {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.button {
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-button-primary-bg);
+  background-color: var(--color-button-primary-bg);
+  color: var(--color-button-primary-text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.statusText {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.remaining {
+  font-family: var(--font-mono);
+}
+
+.waking {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  background-color: var(--color-error-bg);
+  color: var(--color-error-text);
+}
+
+.error {
+  font-size: 0.8rem;
+  color: var(--color-error-text);
+}

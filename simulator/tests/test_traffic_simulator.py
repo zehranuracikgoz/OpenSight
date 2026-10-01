@@ -1,8 +1,10 @@
 import json
 import threading
 import time
+from unittest.mock import MagicMock
 
 import pytest
+import requests
 
 import traffic_simulator as ts
 
@@ -274,3 +276,216 @@ def test_schedule_shutdown_noop_when_duration_not_positive():
     time.sleep(0.05)
 
     assert calls == []
+
+
+def _fake_redis():
+    import fakeredis
+    return fakeredis.FakeStrictRedis(decode_responses=True)
+
+
+def test_rate_scale_override_takes_precedence(monkeypatch):
+    monkeypatch.setenv("SIMULATOR_RATE_SCALE", "0.1")
+    assert ts.rate_scale() == pytest.approx(0.1)
+
+    ts.set_scale_override(0.02)
+    try:
+        assert ts.rate_scale() == pytest.approx(0.02)
+    finally:
+        ts.set_scale_override(None)
+
+    assert ts.rate_scale() == pytest.approx(0.1)
+
+
+def test_record_active_scale_writes_to_redis():
+    r = _fake_redis()
+    ts.record_active_scale(r, 0.02)
+    assert r.get(ts.SIMULATOR_ACTIVE_SCALE_KEY) == "0.02"
+
+
+class TestDemoQuota:
+    def test_allows_first_start(self):
+        quota = ts.DemoQuota(_fake_redis(), cooldown_seconds=600, daily_limit=3)
+        ok, reason = quota.check()
+        assert ok is True and reason is None
+
+    def test_blocks_within_cooldown(self):
+        r = _fake_redis()
+        quota = ts.DemoQuota(r, cooldown_seconds=600, daily_limit=3)
+        quota.record_start()
+
+        ok, reason = quota.check()
+
+        assert ok is False
+        assert "sonra tekrar deneyin" in reason
+
+    def test_allows_after_cooldown_elapses(self):
+        r = _fake_redis()
+        quota = ts.DemoQuota(r, cooldown_seconds=1, daily_limit=3)
+        quota.record_start()
+        time.sleep(1.1)
+
+        ok, reason = quota.check()
+
+        assert ok is True and reason is None
+
+    def test_blocks_after_daily_limit_reached(self):
+        r = _fake_redis()
+        quota = ts.DemoQuota(r, cooldown_seconds=0, daily_limit=2)
+        quota.record_start()
+        quota.record_start()
+
+        ok, reason = quota.check()
+
+        assert ok is False
+        assert "sınırına" in reason
+
+    def test_daily_limit_is_per_calendar_day(self):
+        r = _fake_redis()
+        quota = ts.DemoQuota(r, cooldown_seconds=0, daily_limit=1)
+        # başka bir günün sayacı dolu ama bugünkü anahtar hâlâ boş
+        r.set(quota.COUNT_KEY_PREFIX + "2000-01-01", "99")
+
+        ok, _ = quota.check()
+
+        assert ok is True  # farklı günün sayacı bugünü etkilemiyor
+
+
+class TestDemoController:
+    def _controller(self, redis_client=None, **kwargs):
+        redis_client = redis_client or _fake_redis()
+        quota = ts.DemoQuota(redis_client, cooldown_seconds=kwargs.pop("cooldown", 600), daily_limit=kwargs.pop("limit", 3))
+        return ts.DemoController(redis_client, "http://api", "http://analysis", quota, **kwargs)
+
+    def test_status_starts_idle(self):
+        controller = self._controller()
+        assert controller.status()["state"] == "bosta"
+
+    def test_start_rejected_by_quota(self, monkeypatch):
+        r = _fake_redis()
+        controller = self._controller(redis_client=r, cooldown=600, limit=0)
+
+        ok, reason = controller.start(None)
+
+        assert ok is False
+        assert "sınırına" in reason
+        assert controller.status()["state"] == "bosta"
+
+    def test_start_rejected_on_scale_mismatch(self, monkeypatch):
+        r = _fake_redis()
+        r.set(ts.BASELINE_SCALE_KEY, "0.1")
+        monkeypatch.setenv("SIMULATOR_DEMO_RATE_SCALE", "0.02")
+        controller = self._controller(redis_client=r)
+
+        ok, reason = controller.start(None)
+
+        assert ok is False
+        assert "0.1" in reason and "0.02" in reason
+        assert controller.status()["state"] == "bosta"
+
+    def test_start_allowed_when_no_baseline_scale_recorded(self, monkeypatch):
+        r = _fake_redis()
+        monkeypatch.setenv("SIMULATOR_DEMO_RATE_SCALE", "0.02")
+        controller = self._controller(redis_client=r)
+        monkeypatch.setattr(controller, "_wait_awake", lambda base_url, deadline: False)  # uyanma testi disinda
+
+        ok, reason = controller.start(None)
+
+        assert ok is True and reason is None
+
+    def test_start_rejected_when_already_running(self, monkeypatch):
+        r = _fake_redis()
+        controller = self._controller(redis_client=r)
+        monkeypatch.setattr(controller, "_wait_awake", lambda base_url, deadline: True)
+        with controller._lock:
+            controller._state = "calisiyor"
+
+        ok, reason = controller.start(None)
+
+        assert ok is False
+        assert reason == "zaten çalışıyor"
+
+    def test_run_sets_bosta_with_error_when_services_dont_wake(self, monkeypatch):
+        controller = self._controller()
+        monkeypatch.setattr(controller, "_ping_once", lambda url: False)
+        monkeypatch.setattr(ts, "demo_wake_timeout", lambda: 0.05)
+
+        controller._run(60.0)
+
+        status = controller.status()
+        assert status["state"] == "bosta"
+        assert "uyanmadı" in status["error"]
+
+    def test_run_reaches_running_state_and_records_quota_when_services_awake(self, monkeypatch, tmp_path):
+        r = _fake_redis()
+        controller = self._controller(redis_client=r)
+        monkeypatch.setattr(controller, "_ping_once", lambda url: True)
+        monkeypatch.setattr(ts, "demo_wake_timeout", lambda: 5.0)
+        monkeypatch.setattr(ts, "demo_keepalive_interval", lambda: 0.05)
+
+        fake_sim = MagicMock()
+        fake_sim._suspicious_go = threading.Event()
+        fake_sim._suspicious_go.set()  # model hemen hazir
+        fake_sim._stop = threading.Event()
+        monkeypatch.setattr(ts, "TrafficSimulator", lambda *a, **k: fake_sim)
+
+        thread = threading.Thread(target=controller._run, args=(0.2,), daemon=True)
+        thread.start()
+        time.sleep(0.1)
+        assert controller.status()["state"] == "calisiyor"
+        thread.join(timeout=2)
+
+        assert controller.status()["state"] == "bitti"
+        assert r.get(ts.DemoQuota.LAST_STARTED_KEY) is not None
+        fake_sim.stop.assert_called_once()
+
+
+class TestDemoHttpEndpoints:
+    def _start_server(self, port):
+        server = ts.HTTPServer(("127.0.0.1", port), ts.HealthCheckHandler)
+        r = _fake_redis()
+        quota = ts.DemoQuota(r, cooldown_seconds=600, daily_limit=3)
+        server.demo_controller = ts.DemoController(r, "http://api", "http://analysis", quota)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        return server, thread
+
+    def test_demo_status_endpoint_returns_idle_state(self):
+        server, thread = self._start_server(18211)
+        try:
+            response = requests.get("http://127.0.0.1:18211/demo/status", timeout=3)
+            assert response.status_code == 200
+            assert response.json()["state"] == "bosta"
+            assert response.headers["Access-Control-Allow-Origin"]
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+
+    def test_options_preflight_returns_cors_headers(self):
+        server, thread = self._start_server(18212)
+        try:
+            response = requests.options("http://127.0.0.1:18212/demo/start", timeout=3)
+            assert response.status_code == 204
+            assert response.headers["Access-Control-Allow-Methods"] == "GET, POST, OPTIONS"
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+
+    def test_demo_start_returns_409_when_quota_exhausted(self):
+        server, thread = self._start_server(18213)
+        try:
+            server.demo_controller.quota.daily_limit = 0
+            response = requests.post("http://127.0.0.1:18213/demo/start", timeout=3)
+            assert response.status_code == 409
+            assert "sınırına" in response.json()["error"]
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+
+    def test_unknown_path_returns_404(self):
+        server, thread = self._start_server(18214)
+        try:
+            response = requests.get("http://127.0.0.1:18214/nope", timeout=3)
+            assert response.status_code == 404
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)

@@ -6,9 +6,13 @@ açıklama üretip OpenSight.Api'ye yazıyor
 """
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from dataclasses import asdict
+
+# basicConfig olmadan logger.info(...) hiçbir yere yazılmıyordu - Render'da RabbitMQ bağlantı logu yokluğu buydu
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -107,6 +111,7 @@ def status() -> dict:
         "model_ready": cold_start.is_ready(),
         "in_cold_start": cold_start.is_in_cold_start(),
         "baseline_samples": cold_start.baseline_size(),
+        "baseline_scale": cold_start.baseline_scale(),
         "last_trained_at": behavioral_detector.last_trained_at,
     }
 
