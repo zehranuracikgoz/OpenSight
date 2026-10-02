@@ -21,8 +21,10 @@ const SEVERITY_CLASS: Record<string, string> = {
   Yüksek: styles.severityYuksek,
 };
 
+// backend UTC veriyor, saat dilimi yoksa da UTC sayıp tarayıcının yerel saatine (TR: UTC+3) çeviriyor
 function formatTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString('tr-TR');
+  const hasZone = /(Z|[+-]\d{2}:?\d{2})$/.test(iso);
+  return new Date(hasZone ? iso : `${iso}Z`).toLocaleString('tr-TR');
 }
 
 // son alarmları listeliyor, hiç alarm yoksa EmptyState'e düşecek(ayrı bir sayfa yok, koşullu render

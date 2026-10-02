@@ -85,11 +85,23 @@ export function DemoControl({ onStatusChange }: { onStatusChange?: (status: Demo
   const state = status?.state ?? 'bosta';
   const canStart = state === 'bosta' || state === 'bitti';
 
+  // Redis e ulaşılamazsa simülatör kota alanlarını göndermiyo, o zaman satır da buton engeli de yok
+  const quota =
+    status?.daily_remaining != null &&
+    status.daily_limit != null &&
+    status.monthly_remaining != null &&
+    status.monthly_limit != null
+      ? status
+      : null;
+  let quotaBlockReason: string | null = null;
+  if (quota?.daily_remaining === 0) quotaBlockReason = 'Bugünkü demo hakkı bitti, yarın tekrar deneyin';
+  else if (quota?.monthly_remaining === 0) quotaBlockReason = 'Bu ayki demo hakkı bitti, gelecek ay tekrar deneyin';
+
   return (
     <div className={styles.container}>
       {apiAwake === false && <span className={styles.waking}>Sistem uyanıyor (~1 dk)…</span>}
       {canStart ? (
-        <button className={styles.button} onClick={handleStart} disabled={starting}>
+        <button className={styles.button} onClick={handleStart} disabled={starting || quotaBlockReason !== null}>
           {starting ? 'Başlatılıyor…' : 'Canlı Demoyu Başlat'}
         </button>
       ) : (
@@ -101,6 +113,12 @@ export function DemoControl({ onStatusChange }: { onStatusChange?: (status: Demo
         </span>
       )}
       {state === 'bitti' && <span className={styles.statusText}>{STATE_LABELS.bitti}</span>}
+      {quota && (
+        <span className= {styles.quota}>
+          Bugün kalan: {quota.daily_remaining}/{quota.daily_limit} · Bu ay: {quota.monthly_remaining}/{quota.monthly_limit}
+        </span>
+      )}
+      {quotaBlockReason && <span className={styles.error}>{quotaBlockReason}</span>}
       {(startError ?? status?.error) && <span className={styles.error}>{startError ?? status?.error}</span>}
     </div>
   );

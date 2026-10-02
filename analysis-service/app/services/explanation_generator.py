@@ -58,7 +58,7 @@ def performance_clause(metrics: dict) -> str | None:
     if window_mean is not None:
         count =metrics.get("sample_count")
         window = f"son {count} isteğin" if count else "pencerenin"
-        clause  += f"; {window} ortalaması {window_mean:.0f} ms"
+        clause += f"; {window} ortalaması {window_mean:.0f} ms"
     z_score = metrics.get("z_score")
     if z_score is not None:
         clause += f", z = {z_score:.1f}"
@@ -73,7 +73,7 @@ def performance_summary(metrics: dict) -> str | None:
     summary = f"gecikme {latency:.0f} ms"
     z_score = metrics.get("z_score")
     if z_score is not None:
-        summary += f" , z = {z_score:.1f}"
+        summary += f", z = {z_score:.1f}"
     return summary
 
 
@@ -81,6 +81,11 @@ class ExplanationGenerator:
     def __init__(self, ollama_url: str = "http://ollama:11434/api/generate", model: str = "llama3.1"):
         self.ollama_url = ollama_url
         self.model = model
+
+    @property
+    def enabled(self) -> bool:
+        """OLLAMA_URL verilmediyse Ollama ya hiç istek atılmıyor, sadece şablon kullanılıyor"""
+        return bool(self.ollama_url)
 
     def clause(self, alert_type: str, metrics: dict) -> str | None:
         """alarm türüne göre metrik cümlesi"""
@@ -113,6 +118,8 @@ class ExplanationGenerator:
             f"Metrikler: {metrics}\n"
             f"Bu durumu güvenlik/operasyon ekibine 2 cümlede, teknik ama anlaşılır şekilde açıkla."
         )
+        if not self.enabled:
+            return self.fallback_template(client_id, alert_type, severity, metrics)
         try:
             with httpx.Client(timeout=OLLAMA_TIMEOUT_SECONDS) as client:
                 response = client.post(

@@ -350,7 +350,7 @@ def test_behavioral_description_survives_top_endpoint_lookup_failure():
     pipeline.process("client_supheli_0001", "/v1/accounts", 190, timestamp=1000.0)
 
     _, kwargs = backend_client.post_alert.call_args
-    assert "tek bir endpoint e gidiyor" in kwargs["description"]
+    assert "tek bir endpoint'e gidiyor" in kwargs["description"]
 
 
 def test_correlation_patches_both_alerts_with_one_combined_sentence():

@@ -43,7 +43,8 @@ ALERT_COOLDOWN_SECONDS = float(os.environ.get("ALERT_COOLDOWN_SECONDS", "300"))
 BACKEND_URL = os.environ.get("OPENSIGHT_API_URL", "http://localhost:8080")
 # Render'da CORS_ORIGIN olarak girildi, yerelde/docker-compose'da hala DASHBOARD_ORIGIN kullaniliyor
 DASHBOARD_ORIGIN = os.environ.get("CORS_ORIGIN") or os.environ.get("DASHBOARD_ORIGIN", "http://localhost:5173")
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
+# boşsa Ollama kapalı, sadece şablon açıklama kullanılıyor
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:1b")
 
 app = FastAPI(title="OpenSight Analiz Servisi", version="0.1.0")

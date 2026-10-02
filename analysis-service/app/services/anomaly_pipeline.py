@@ -192,7 +192,8 @@ class AnomalyPipeline:
     ) -> None:
         """ollama'dan daha iyi bir aciklama gelirse alert'i arka planda gunceller - ayri bir thread'de
         calisir, ana RabbitMQ tuketim akisini asla bloklamaz/yavaslatmaz"""
-        if self.explanation_generator is None:
+        # ollama yapılandırılmamışsa thread de log da yok, şablon açıklama zaten yazıldı
+        if self.explanation_generator is None or not self.explanation_generator.enabled:
             return
         thread = threading.Thread(
             target=self._refine_explanation,

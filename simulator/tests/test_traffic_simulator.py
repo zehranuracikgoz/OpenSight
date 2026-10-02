@@ -485,7 +485,7 @@ class TestDemoController:
         alert={"alertId": "a1", "clientId": "client_supheli_0000", "type": "Davranışsal", "createdAt": now.isoformat()}
         monkeypatch.setattr(controller, "_fetch_scorecard_inputs", lambda: ([alert], []))
 
-        controller._build_scorecard(now - timedelta(minutes=5))
+        controller._build_scorecard(now - timedelta(minutes=5), now)
 
         status = controller.status()
         assert status["scorecard_pending"] is False
@@ -502,7 +502,7 @@ class TestDemoController:
         with controller._lock:
             controller._scorecard_pending = True
 
-        controller._build_scorecard(datetime.now(timezone.utc))
+        controller._build_scorecard(datetime.now(timezone.utc), datetime.now(timezone.utc))
 
         status = controller.status()
         assert status["scorecard"] is None
@@ -516,7 +516,7 @@ class TestDemoController:
         with controller._lock:
             controller._scorecard_pending = True
 
-        thread = threading.Thread(target=controller._build_scorecard, args=(datetime.now(timezone.utc),), daemon=True)
+        thread = threading.Thread(target=controller._build_scorecard, args=(datetime.now(timezone.utc), datetime.now(timezone.utc)), daemon=True)
         thread.start()
         time.sleep (0.1)
         assert controller.status()["scorecard_pending"] is True
@@ -595,7 +595,7 @@ class TestDemoHttpEndpoints:
             response = requests.get("http://127.0.0.1:18215/demo/clients", timeout=3)
             assert response.status_code ==200
             clients = response.json()["clients"]
-            assert clients["client_supheli_0001"] == "supheli "
+            assert clients["client_supheli_0001"] == "supheli"
             assert len(clients) == 9
             assert response.headers["Access-Control-Allow-Origin"]
         finally:

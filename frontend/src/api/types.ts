@@ -62,6 +62,11 @@ export interface DemoStatus {
   error: string | null;
   scorecard?: DemoScorecard | null;
   scorecard_pending?: boolean;
+  // Redis e ulaşılamazsa gelmiyor
+  daily_remaining?: number;
+  daily_limit?: number;
+  monthly_remaining?: number;
+  monthly_limit?: number;
 }
 
 // demo bitince simülatörün hesapladığı karne

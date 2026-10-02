@@ -25,7 +25,7 @@ describe('DemoScorecard', () => {
   it('yoğun istemcilere verilen davranışsal alarmı yanlış olarak ayrı satırda gösteriyor', () => {
     render(<DemoScorecard scorecard={scorecard} pending={false} />);
 
-    expect(screen.getByText('yoğun istemciye verilen davranışsal alarm (yanlış) ')).toBeInTheDocument();
+    expect(screen.getByText('yoğun istemciye verilen davranışsal alarm (yanlış)')).toBeInTheDocument();
     expect(screen.getByText('yoğun istemci performans alarmı aldı')).toBeInTheDocument();
   });
 

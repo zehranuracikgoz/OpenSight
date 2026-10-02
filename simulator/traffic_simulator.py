@@ -21,11 +21,12 @@ import argparse
 import json
 import os
 import random
+import re
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -70,6 +71,8 @@ DEFAULT_DEMO_DAILY_LIMIT = 3
 DEFAULT_DEMO_MONTHLY_LIMIT = 20
 DEFAULT_DEMO_WAKE_TIMEOUT_SECONDS = 90.0
 DEFAULT_DEMO_KEEPALIVE_INTERVAL_SECONDS = 300.0
+# demo bitince analiz kuyruğunun boşalması ve korelasyonun yazılması için bekleme
+DEFAULT_DEMO_SCORECARD_GRACE_SECONDS = 90.0
 
 # cold_start.py'deki BASELINE_SCALE_KEY/SIMULATOR_ACTIVE_SCALE_KEY ile aynı olmalı
 BASELINE_SCALE_KEY = "behavioral:baseline:scale"
@@ -105,7 +108,7 @@ def demo_wake_timeout() -> float:
 
 
 def demo_scorecard_grace() -> float:
-    return float(os.environ.get("SIMULATOR_DEMO_SCORECARD_GRACE", "5"))
+    return float(os.environ.get("SIMULATOR_DEMO_SCORECARD_GRACE", str(DEFAULT_DEMO_SCORECARD_GRACE_SECONDS)))
 
 
 def demo_keepalive_interval() -> float:
@@ -143,7 +146,10 @@ def client_profiles(clients_per_profile: int) -> dict[str, str]:
 
 
 def _parse_ts(text: str) -> datetime:
-    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    """API zaman damgası UTC, saat dilimi yoksa da UTC sayıyor, .NET'in 7 haneli kesrini 6'ya kırpıyor"""
+    text = re.sub(r"(\.\d{6})\d+", r"\1", text.replace("Z", "+00:00"))
+    parsed = datetime.fromisoformat(text)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def compute_scorecard(
@@ -152,7 +158,15 @@ def compute_scorecard(
     """demo penceresindeki alarmları gerçek profile göre sayıyor, tanımlar evaluate.py ile aynı"""
     in_window = lambda iso: window_start <= _parse_ts(iso) <= window_end  # noqa: E731
     demo_alerts = [a for a in alerts if a["clientId"] in profiles and in_window(a["createdAt"])]
-    demo_correlations = [c for c in correlations if c["clientId"] in profiles and in_window(c["detectedAt"])]
+    created_at = {a["alertId"]: a["createdAt"] for a in alerts}
+
+    def in_demo(correlation: dict) -> bool:
+        """iki alarmından en az biri pencerede ise demoya ait, alarmlar listede yoksa detectedAt'e bakıyor"""
+        ids = (correlation.get("performanceAlertId"), correlation.get("behavioralAlertId"))
+        times = [created_at[i] for i in ids if i in created_at]
+        return any(in_window(t) for t in times) if times else in_window(correlation["detectedAt"])
+
+    demo_correlations = [c for c in correlations if c["clientId"] in profiles and in_demo(c)]
 
     def clients_with(profile: str, alert_type: str) -> int:
         return len({a["clientId"] for a in demo_alerts if profiles[a["clientId"]] == profile and a["type"] == alert_type})
@@ -426,6 +440,20 @@ class DemoQuota:
 
         return True, None
 
+    def remaining(self) -> dict | None:
+        """kalan günlük ve aylık hak, Redis'e ulaşılamazsa None"""
+        try:
+            daily_count = int(self.redis.get(self._day_key()) or 0)
+            monthly_count = int(self.redis.get(self._month_key()) or 0)
+        except Exception:
+            return None
+        return {
+            "daily_remaining": max(0, self.daily_limit - daily_count),
+            "daily_limit": self.daily_limit,
+            "monthly_remaining": max(0, self.monthly_limit - monthly_count),
+            "monthly_limit": self.monthly_limit,
+        }
+
     def record_start(self) -> None:
         pipe = self.redis.pipeline()
         pipe.set(self.LAST_STARTED_KEY, str(time.time()))
@@ -461,6 +489,7 @@ class DemoController:
         self._error: str | None = None
         self._scorecard: dict | None = None
         self._scorecard_pending = False
+        self._generation = 0  # yeni demo başlayınca eski demonun karne thread'i sonucu ezmesin
 
     def clients(self) -> dict[str, str]:
         """istemci -> gerçek profil, dashboard rozeti için"""
@@ -471,14 +500,16 @@ class DemoController:
             remaining = None
             if self._state == "calisiyor" and self._started_at is not None:
                 remaining = max(0.0, self._duration_seconds - (time.monotonic() - self._started_at))
-            return {
+            status = {
                 "state": self._state,
                 "remaining_seconds": remaining,
                 "duration_seconds": self._duration_seconds if self._state == "calisiyor" else None,
                 "error": self._error,
-                "scorecard" : self._scorecard,
+                "scorecard": self._scorecard,
                 "scorecard_pending": self._scorecard_pending,
             }
+        status.update(self.quota.remaining() or {})  # Redis'e ulaşılamazsa kota alanları hiç gelmiyor
+        return status
 
     def _scale_mismatch(self) -> str | None:
         baseline_scale_raw = self.redis.get(BASELINE_SCALE_KEY)
@@ -507,6 +538,7 @@ class DemoController:
             self._error = None
             self._scorecard = None
             self._scorecard_pending =  False
+            self._generation += 1
 
         duration = min(max(duration_seconds or demo_default_duration(), 60.0), demo_max_duration())
         threading.Thread(target=self._run, args=(duration,), daemon=True).start()
@@ -568,11 +600,13 @@ class DemoController:
         sim.stop()
         keepalive_stop.set()
 
+        demo_ended = datetime.now(timezone.utc)
         with self._lock:
             self._state = "bitti"
             self._sim = None
             self._scorecard_pending = True
-        self._build_scorecard(traffic_started)
+            generation = self._generation
+        self._build_scorecard(traffic_started, demo_ended, generation)
 
     def _fetch_scorecard_inputs(self) ->tuple[list[dict], list[dict]]:
         alerts = requests.get(f"{self.base_url}/api/alerts", params={"take": 500, "skip": 0, "hours": 1}, timeout= 10)
@@ -581,18 +615,20 @@ class DemoController:
         correlations.raise_for_status()
         return alerts.json()["items"], correlations.json()
 
-    def _build_scorecard(self, window_start: datetime) -> None:
-        """demo bitince alarm ve korelasyonları çekip karneyi hesaplıyo, hata olursa karne boş kalıyor"""
+    def _build_scorecard(self, window_start: datetime, demo_ended: datetime, generation: int | None = None) -> None:
+        """bekleme payından sonra karneyi hesaplıyor, pencere başlangıçtan bitiş + bekleme payına kadar"""
         scorecard = None
         try:
-            time.sleep(demo_scorecard_grace())
+            grace = demo_scorecard_grace()
+            time.sleep(grace)
             alerts, correlations = self._fetch_scorecard_inputs()
-            scorecard = compute_scorecard(
-                self.clients(), alerts, correlations, window_start, datetime.now(timezone.utc)
-            )
+            window_end = demo_ended + timedelta(seconds=grace)
+            scorecard = compute_scorecard(self.clients(), alerts, correlations, window_start, window_end)
         except Exception as exc:
             print(f"[simulator] demo karnesi hesaplanamadı: {exc}", flush=True)
         with self._lock:
+            if generation is not None and generation != self._generation:
+                return
             self._scorecard = scorecard
             self._scorecard_pending = False
 
