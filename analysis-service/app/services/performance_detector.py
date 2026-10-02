@@ -16,6 +16,7 @@ class ZScoreResult:
     is_anomaly: bool
     mean: float
     std: float
+    sample_count: int = 0  # penceredeki istek sayısı
 
 
 class RollingZScoreDetector:
@@ -49,7 +50,9 @@ class RollingZScoreDetector:
         is_anomaly = abs(z) >= self.threshold
 
         self._push(key, latency_ms)
-        return ZScoreResult(z_score=round(z, 3), is_anomaly=is_anomaly, mean=round(mean, 2), std=round(std, 2))
+        return ZScoreResult(
+            z_score=round(z, 3), is_anomaly=is_anomaly, mean=round(mean, 2), std=round(std, 2), sample_count=len(window)
+        )
 
     def _push(self, key: str, latency_ms: float) -> None:
         pipe = self.redis.pipeline()

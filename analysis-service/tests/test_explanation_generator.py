@@ -87,3 +87,98 @@ def test_fallback_template_formats_all_fields():
 
     # istemci, tür ve şiddet şablona birebir yerleşiyor
     assert result == "client_5 için Performans tipinde anomali tespit edildi, risk seviyesi: Orta"
+
+def test_behavioral_explanation_compares_features_to_baseline():
+    generator = ExplanationGenerator()
+    metrics = {
+        "istek_orani": 1.3,
+        "en_sik_endpoint_payi": 0.95,
+        "ortalama_gecikme": 190.0,
+        "top_endpoint": "/v1/accounts",
+        "baseline_median": [0.1, 0.6, 85.0],
+    }
+
+    text = generator.fallback_template("client_supheli_0001", "Davranışsal", "Orta", metrics)
+
+    assert text.startswith("client_supheli_0001: istek oranı 1.30 req/s")
+    assert "baseline medyanının ~13 katı" in text
+    assert "istekler %95 oranında /v1/accounts endpoint'ine gidiyor" in text
+    assert "baseline medyanı %60" in text
+    assert "ortalama gecikme 190 ms (baseline medyanı 85 ms)" in text
+
+
+def test_behavioral_explanation_without_baseline_omits_comparison():
+    generator = ExplanationGenerator()
+    metrics = {"istek_orani": 1.3, "en_sik_endpoint_payi": 0.95, "ortalama_gecikme": 190.0, "baseline_median": None}
+
+    text = generator.fallback_template("c1", "Davranışsal", "Orta", metrics)
+
+    assert "req/s," in text  #karşılaştırma parantezi yok
+    assert "baseline" not in text
+
+def test_behavioral_explanation_handles_rate_below_and_near_baseline():
+    generator = ExplanationGenerator ()
+    low = generator.fallback_template("c1", "Davranışsal", "Orta", {"istek_orani": 0.05, "baseline_median": [0.1, 0.6, 85.0]})
+    near = generator.fallback_template("c1", "Davranışsal", "Orta", {"istek_orani": 0.1, "baseline_median": [0.1, 0.6, 85.0]})
+
+    assert "baseline medyanının ~%50 düzeyinde" in low
+    assert "baseline medyanına yakın" in near
+
+
+def test_behavioral_explanation_without_top_endpoint_name_still_reads_well():
+    generator = ExplanationGenerator()
+
+    text = generator.fallback_template("c1", "Davranışsal", "Orta", {"istek_orani": 1.0, "en_sik_endpoint_payi": 0.9})
+
+    assert "istekler %90 oranında tek bir endpoint'e gidiyor" in text
+
+
+def test_performance_explanation_uses_latency_window_mean_and_zscore():
+    generator = ExplanationGenerator()
+    metrics = {"latency_ms": 320, "window_mean": 62.0, "sample_count": 50, "z_score": 4.7}
+
+    text = generator.fallback_template("client_yogun_0000", "Performans", "Orta", metrics)
+
+    assert text =="client_yogun_0000: gecikme 320 ms; son 50 isteğin ortalaması 62 ms, z = 4.7"
+
+
+def test_fallback_template_without_metrics_keeps_generic_text():
+    generator = ExplanationGenerator()
+
+    assert generator.fallback_template("c1", "Performans", "Orta") == (
+        "c1 için Performans tipinde anomali tespit edildi, risk seviyesi: Orta"
+    )
+    assert generator.fallback_template("c1", "Performans", "Orta", {"z_score": 4.0}) == (
+        "c1 için Performans tipinde anomali tespit edildi, risk seviyesi: Orta"
+    )  #latency_ms yok, zengin cümlecik kurulmuyo
+
+
+def test_combined_explanation_is_one_short_sentence_without_repeating_details():
+    generator = ExplanationGenerator()
+
+    text = generator.combined_explanation("gecikme 344 ms, z = 3.5")
+
+    assert text == "davranışsal ve performans anomalisi aynı pencerede oluştu (gecikme 344 ms, z = 3.5)"
+
+
+def test_summary_is_only_filled_for_performance_alerts():
+    generator=ExplanationGenerator()
+    metrics = {"latency_ms": 344.0, "z_score": 3.5, "istek_orani": 1.5}
+
+    assert generator.summary("Performans", metrics) == "gecikme 344 ms, z = 3.5"
+    assert generator.summary("Davranışsal", metrics) == ""
+    assert generator.summary("Performans", {"z_score": 3.5}) == ""
+
+
+def test_generate_explanation_fallback_uses_rich_text_when_metrics_given():
+    generator = ExplanationGenerator()
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.post.side_effect = httpx.ConnectError("ollama yok")
+    metrics={"latency_ms": 320, "window_mean": 62.0, "sample_count": 50, "z_score": 4.7}
+
+    with patch("app.services.explanation_generator.httpx.Client", return_value=mock_client):
+        result = generator.generate_explanation("c1", "Performans", "Orta", metrics)
+
+    assert result == generator.fallback_template("c1", "Performans", "Orta", metrics)
+    assert "z = 4.7" in result

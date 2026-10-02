@@ -34,12 +34,14 @@ class BehavioralAnomalyDetector:
         self._model: IsolationForest | None = None
         self._is_fitted = False
         self.last_trained_at: str | None= None
+        self.baseline_median: list[float] | None = None  # açıklamada baseline karşılaştırması için
 
     def fit(self, baseline_features: list[list[float]]) -> None:
         """cold start sonrası toplanan 'sadece normal' veriyle ilk eğitim"""
         X = np.array(baseline_features)
         self._model = IsolationForest(contamination=self.contamination, random_state=self.random_state)
         self._model.fit(X)
+        self.baseline_median =np.median(X, axis=0).tolist()
         self._is_fitted = True
         self.last_trained_at = datetime.now(timezone.utc).isoformat()
 

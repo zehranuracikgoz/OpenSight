@@ -41,6 +41,17 @@ class ClientTrafficWindow:
 
         return self.feature_vector(client_id, now=timestamp)
 
+    def top_endpoint(self, client_id: str, now: float | None = None) -> tuple[str, float] | None:
+        """penceredeki en sık endpoint ve payı için"""
+        now = time.time() if now is None else now
+        cutoff = now - self.window_seconds
+        events=[json.loads(e) for e in self.redis.lrange(self._key(client_id), 0, -1)]
+        recent = [e for e in events if e["ts"] >= cutoff]
+        if not recent:
+            return None
+        endpoint, count=Counter(e["endpoint"] for e in recent).most_common(1)[0]
+        return endpoint, count / len(recent)
+
     def feature_vector(self, client_id: str, now: float | None = None) -> list[float]:
         """son window_seconds içindeki isteklerden [istek_orani, en_sik_endpoint_payi, ortalama_gecikme] hesaplıyor"""
         now = time.time() if now is None else now

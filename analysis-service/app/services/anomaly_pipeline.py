@@ -74,7 +74,8 @@ class AnomalyPipeline:
         feature_vector = self.traffic_window.record(client_id, endpoint, latency_ms, timestamp)
         self.cold_start.handle(client_id, feature_vector, timestamp)
 
-        pending: list[tuple[str, str]] = []
+        # (tür, alert_id, açıklama, kısa özet)
+        pending: list[tuple[str, str, str, str]] = []
 
         # feature_vector[0], ClientTrafficWindow'un saniyedeki istek sayisi olarak hesapladigi
         # ham deger (req/s) - backend'deki request_rate_pct alani onceden hep bos gidiyordu,
@@ -84,7 +85,8 @@ class AnomalyPipeline:
         # cooldown türe göre ayrı - performans beklerken gelen davranışsal alarm yine yazılıyor
         if perf_result.is_anomaly and not self._in_cooldown(client_id, "Performans", timestamp):
             severity = severity_for_zscore(perf_result.z_score)
-            description = self._fallback_description(client_id, "Performans", severity)
+            metrics = self._performance_metrics(perf_result, latency_ms, endpoint)
+            description = self._fallback_description(client_id, "Performans", severity, metrics)
             post_kwargs = {
                 "z_score": perf_result.z_score,
                 "related_endpoint": endpoint,
@@ -95,21 +97,21 @@ class AnomalyPipeline:
             alert_id = self.backend_client.post_alert(client_id, "Performans", severity, **post_kwargs)
             if alert_id:
                 self._last_alert_at[(client_id, "Performans")] = timestamp
-                pending.append(("Performans", alert_id))
+                pending.append(("Performans", alert_id, description or "", self._summary("Performans", metrics)))
                 if self.threshold_settings:
                     self.threshold_settings.record_alert("Performans")
-                self._start_explanation_refinement(
-                    alert_id, client_id, "Performans", severity, description, {"z_score": perf_result.z_score}
-                )
+                self._start_explanation_refinement(alert_id, client_id, "Performans", severity, description, metrics)
 
         if self.cold_start.is_ready():
             behavioral_result = self.behavioral_detector.score(feature_vector)
             if behavioral_result.is_anomaly and not self._in_cooldown(client_id, "Davranışsal", timestamp):
                 severity = severity_for_anomaly_score(behavioral_result.anomaly_score)
-                description = self._fallback_description(client_id, "Davranışsal", severity)
+                metrics = self._behavioral_metrics(client_id, behavioral_result, feature_vector, timestamp)
+                description = self._fallback_description(client_id, "Davranışsal", severity, metrics)
                 post_kwargs = {
                     "anomaly_score": behavioral_result.anomaly_score,
-                    "related_endpoint": endpoint,
+                    # davranışsal alarmda en sık endpoint gösteriliyor
+                    "related_endpoint": metrics.get("top_endpoint") or endpoint,
                     "request_rate_pct": request_rate,
                 }
                 if description is not None:
@@ -117,25 +119,73 @@ class AnomalyPipeline:
                 alert_id = self.backend_client.post_alert(client_id, "Davranışsal", severity, **post_kwargs)
                 if alert_id:
                     self._last_alert_at[(client_id, "Davranışsal")] = timestamp
-                    pending.append(("Davranışsal", alert_id))
+                    pending.append(("Davranışsal", alert_id, description or "", self._summary("Davranışsal", metrics)))
                     if self.threshold_settings:
                         self.threshold_settings.record_alert("Davranışsal")
                     self._start_explanation_refinement(
-                        alert_id, client_id,"Davranışsal", severity, description,
-                        {"anomaly_score": behavioral_result.anomaly_score},
+                        alert_id, client_id, "Davranışsal", severity, description, metrics
                     )
 
         alert_time = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-        for alert_type, alert_id in pending:
-            correlation = self.correlation_engine.register_alert(PendingAlert(alert_id, client_id, alert_type, alert_time))
+        for alert_type, alert_id, description, summary in pending:
+            alert = PendingAlert(alert_id, client_id, alert_type, alert_time, description=description, summary=summary)
+            correlation = self.correlation_engine.register_alert(alert)
             if correlation is not None:
-                self.backend_client.post_correlation(correlation.performance_alert_id, correlation.behavioral_alert_id)
+                correlation_id = self.backend_client.post_correlation(
+                    correlation.performance_alert_id, correlation.behavioral_alert_id
+                )
+                if correlation_id:
+                    self._describe_correlation(correlation)
 
-    def _fallback_description(self, client_id: str, alert_type: str, severity: str) -> str | None:
+    def _performance_metrics(self, perf_result, latency_ms: float, endpoint: str) -> dict:
+        return {
+            "z_score": perf_result.z_score,
+            "latency_ms": latency_ms,
+            "window_mean": perf_result.mean,
+            "sample_count": perf_result.sample_count,
+            "endpoint": endpoint,
+        }
+    def _behavioral_metrics(self, client_id: str, behavioral_result, feature_vector: list[float], timestamp: float) -> dict:
+        metrics ={
+            "anomaly_score": behavioral_result.anomaly_score,
+            "istek_orani": feature_vector[0],
+            "en_sik_endpoint_payi": feature_vector[1],
+            "ortalama_gecikme": feature_vector[2],
+            "baseline_median": self.behavioral_detector.baseline_median,
+        }
+        metrics["top_endpoint"] = self._top_endpoint_name(client_id, timestamp)
+        return metrics
+
+    def _top_endpoint_name(self, client_id: str, timestamp: float) -> str | None:
+        """en sık endpoint in adı, Redis hatasında none"""
+        try:
+            top = self.traffic_window.top_endpoint(client_id, now=timestamp)
+            return top[0] if top else None
+        except Exception:
+            return None
+
+    def _summary(self, alert_type: str, metrics: dict) -> str:
+        if self.explanation_generator is None:
+            return ""
+        return self.explanation_generator.summary(alert_type, metrics)
+
+    def _describe_correlation(self, correlation) -> None:
+        """korelasyon cümlesini iki alarmın açıklamasına ekliyor"""
+        if self.explanation_generator is None or not correlation.performance_summary:
+            return
+        combined=self.explanation_generator.combined_explanation(correlation.performance_summary)
+        for alert_id, own in (
+            (correlation.performance_alert_id, correlation.performance_description),
+            (correlation.behavioral_alert_id, correlation.behavioral_description),
+        ):
+            text = f"{own}\nKorelasyon: {combined}" if own else f"Korelasyon: {combined}"
+            self.backend_client.patch_alert_description(alert_id, text)
+
+    def _fallback_description(self, client_id: str, alert_type: str, severity: str, metrics: dict) -> str | None:
         """explanation_generator taniminmissa aninda (I/O olmadan) kural tabanli aciklamayi uretiyor"""
         if self.explanation_generator is None:
             return None
-        return self.explanation_generator.fallback_template(client_id, alert_type, severity)
+        return self.explanation_generator.fallback_template(client_id, alert_type, severity, metrics)
 
     def _start_explanation_refinement(
         self, alert_id: str, client_id: str, alert_type: str, severity: str, fallback_text: str | None, metrics: dict

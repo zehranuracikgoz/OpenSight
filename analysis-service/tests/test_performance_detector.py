@@ -39,5 +39,21 @@ def test_clients_are_scored_independently(redis_client):
     for latency in [48, 50, 49, 51, 50, 52, 49, 50, 48, 51, 50, 49]:
         det.update_and_score("client_a", latency)
     # client_b'nin hiç geçmişi yok-> anomali olarak işaretlenmeyecek(cold start koruması)
-    result = det.update_and_score("client_b", 2000)
+    result = det.update_and_score("client_b" , 2000)
     assert result.is_anomaly is False
+
+
+def test_result_reports_how_many_samples_the_mean_was_computed_from(redis_client):
+    det = RollingZScoreDetector(redis_client, window_size=20, threshold=3.0)
+    for latency in [48, 50, 49, 51, 50, 52, 49, 50]:
+        det.update_and_score("client_a", latency)
+
+    result=det.update_and_score("client_a", 2000)
+
+    assert result.sample_count == 8  #son istek haric 8 değer
+
+
+def test_zscore_result_sample_count_defaults_to_zero_during_cold_start(redis_client):
+    det=RollingZScoreDetector(redis_client, window_size=20, threshold=3.0)
+
+    assert det.update_and_score("client_a", 50).sample_count == 0

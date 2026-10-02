@@ -44,3 +44,16 @@ def test_same_type_alerts_do_not_correlate():
     ce.register_alert(PendingAlert("perf-1", "client_z", "Performans", t0))
     result = ce.register_alert(PendingAlert("perf-2", "client_z", "Performans", t0 + timedelta(minutes=1)))
     assert result is None
+
+def test_correlation_result_carries_descriptions_and_performance_summary():
+    engine = CorrelationEngine (window_seconds=1800)
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    engine.register_alert(PendingAlert("perf-1", "c1", "Performans", t0, description="perf açıklama", summary="gecikme 320 ms, z = 4.7"))
+
+    result=engine.register_alert(
+        PendingAlert("beh-1", "c1", "Davranışsal", t0 + timedelta(seconds=5), description="beh açıklama")
+    )
+
+    assert result.performance_description == "perf açıklama"
+    assert result.behavioral_description == "beh açıklama"
+    assert result.performance_summary == "gecikme 320 ms, z = 4.7"

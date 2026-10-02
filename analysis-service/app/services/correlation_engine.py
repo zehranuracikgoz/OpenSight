@@ -14,6 +14,8 @@ class PendingAlert:
     client_id: str
     alert_type: str  # "Performans" | "Davranışsal"
     timestamp: datetime
+    description: str = ""  # alarmın kendi açıklaması
+    summary: str = ""  # korelasyon cümlesi için kısa özet
 
 
 @dataclass
@@ -21,6 +23,9 @@ class CorrelationResult:
     performance_alert_id: str
     behavioral_alert_id: str
     client_id: str
+    performance_description: str = ""
+    behavioral_description: str = ""
+    performance_summary: str = ""
 
 
 class CorrelationEngine:
@@ -44,7 +49,15 @@ class CorrelationEngine:
             bucket.remove(match)
             perf_id = alert.alert_id if alert.alert_type == "Performans" else match.alert_id
             beh_id = alert.alert_id if alert.alert_type == "Davranışsal" else match.alert_id
-            return CorrelationResult(performance_alert_id=perf_id, behavioral_alert_id=beh_id, client_id=alert.client_id)
+            perf, beh = (alert, match) if alert.alert_type == "Performans" else (match, alert)
+            return CorrelationResult(
+                performance_alert_id=perf_id,
+                behavioral_alert_id=beh_id,
+                client_id=alert.client_id,
+                performance_description=perf.description,
+                behavioral_description=beh.description,
+                performance_summary=perf.summary,
+            )
 
         bucket.append(alert)
         return None

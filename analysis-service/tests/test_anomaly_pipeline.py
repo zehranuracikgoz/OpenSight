@@ -41,6 +41,7 @@ def _make_pipeline(
 
     traffic_window = MagicMock()
     traffic_window.record.return_value = [1.0, 0.5, 40.0]
+    traffic_window.top_endpoint.return_value = None
 
     cold_start = MagicMock()
     cold_start.is_ready.return_value = cold_start_ready
@@ -52,7 +53,7 @@ def _make_pipeline(
     if with_explanation_generator:
         explanation_generator=MagicMock()
         explanation_generator.fallback_template.side_effect = (
-            lambda client_id, alert_type, severity: f"sablon: {client_id}/{alert_type}/{severity}"
+            lambda client_id, alert_type, severity, metrics=None: f"sablon: {client_id}/{alert_type}/{severity}"
         )
 
     pipeline = AnomalyPipeline(
@@ -303,3 +304,118 @@ def test_overlapping_anomalies_still_correlate_again_after_cooldown():
         ("perf-1", "beh-1"),
         ("perf-2", "beh-2"),
     ]
+
+def _make_rich_pipeline(perf_is_anomaly=False, behavioral_is_anomaly=False):
+    """gerçek ExplanationGenerator ile"""
+    from app.services.explanation_generator import ExplanationGenerator
+
+    pipeline, backend_client = _make_pipeline(perf_is_anomaly, behavioral_is_anomaly)
+    pipeline.explanation_generator = ExplanationGenerator()
+    pipeline._start_explanation_refinement = lambda *args, **kwargs: None  # ollama thread'i devre dışı
+    pipeline.performance_detector.update_and_score.return_value = ZScoreResult(
+        z_score=4.7, is_anomaly=perf_is_anomaly, mean=62.0, std=5.0, sample_count=50
+    )
+    pipeline.traffic_window.record.return_value = [1.3, 0.95, 190.0]
+    pipeline.traffic_window.top_endpoint.return_value = ("/v1/accounts", 0.95)
+    pipeline.behavioral_detector.baseline_median=[0.1, 0.6, 85.0]
+    return pipeline, backend_client
+
+
+def test_performance_alert_description_uses_real_metrics():
+    pipeline, backend_client = _make_rich_pipeline(perf_is_anomaly=True)
+    backend_client.post_alert.return_value = "perf-1"
+
+    pipeline.process("client_yogun_0000", "/v1/payments", 320, timestamp=1000.0)
+
+    _, kwargs = backend_client.post_alert.call_args
+    assert kwargs["description"] == "client_yogun_0000: gecikme 320 ms; son 50 isteğin ortalaması 62 ms, z = 4.7."
+
+
+def test_behavioral_alert_description_compares_to_baseline_and_names_top_endpoint():
+    pipeline, backend_client = _make_rich_pipeline(behavioral_is_anomaly=True)
+    backend_client.post_alert.return_value= "beh-1"
+
+    pipeline.process("client_supheli_0001", "/v1/accounts", 190, timestamp=1000.0)
+
+    _, kwargs = backend_client.post_alert.call_args
+    assert "istek oranı 1.30 req/s (baseline medyanının ~13 katı)" in kwargs["description"]
+    assert "%95 oranında /v1/accounts endpoint'ine gidiyor" in kwargs["description"]
+
+
+def test_behavioral_description_survives_top_endpoint_lookup_failure():
+    pipeline, backend_client = _make_rich_pipeline(behavioral_is_anomaly=True)
+    pipeline.traffic_window.top_endpoint.side_effect = RuntimeError("redis yok")
+    backend_client.post_alert.return_value = "beh-1"
+
+    pipeline.process("client_supheli_0001", "/v1/accounts", 190, timestamp=1000.0)
+
+    _, kwargs = backend_client.post_alert.call_args
+    assert "tek bir endpoint e gidiyor" in kwargs["description"]
+
+
+def test_correlation_patches_both_alerts_with_one_combined_sentence():
+    pipeline, backend_client = _make_rich_pipeline(perf_is_anomaly=True, behavioral_is_anomaly=True)
+    backend_client.post_alert.side_effect = ["perf-1", "beh-1"]
+    backend_client.post_correlation.return_value = "corr-1"
+
+    pipeline.process("client_supheli_0001", "/v1/accounts", 320, timestamp=1000.0)
+
+    patched = {c.args[0]: c.args[1] for c in backend_client.patch_alert_description.call_args_list}
+    assert set(patched) == {"perf-1", "beh-1"}
+    for alert_id, text in patched.items():
+        own, combined = text.split("\nKorelasyon: ")
+        assert combined == "davranışsal ve performans anomalisi aynı pencerede oluştu (gecikme 320 ms, z = 4.7)."
+        assert "istek oranı" not in combined  # ayrıntı kendi açıklamasında
+    assert patched["perf-1"].startswith("client_supheli_0001: gecikme 320 ms;")  #kendi açıklaması duruyor
+    assert patched["beh-1"].startswith("client_supheli_0001: istek oranı 1.30 req/s")
+
+
+def test_correlation_description_not_patched_when_correlation_post_fails():
+    pipeline, backend_client = _make_rich_pipeline(perf_is_anomaly=True, behavioral_is_anomaly=True)
+    backend_client.post_alert.side_effect = ["perf-1", "beh-1"]
+    backend_client.post_correlation.return_value = None  #backend korelasyonu yazamadı
+
+    pipeline.process("client_supheli_0001", "/v1/accounts", 320, timestamp=1000.0)
+
+    backend_client.patch_alert_description.assert_not_called()
+
+def test_correlation_description_not_patched_without_explanation_generator():
+    pipeline, backend_client =_make_pipeline(perf_is_anomaly=True, behavioral_is_anomaly=True)
+    backend_client.post_alert.side_effect = ["perf-1", "beh-1"]
+    backend_client.post_correlation.return_value="corr-1"
+
+    pipeline.process("client_a", "/v1/accounts", 5000, timestamp=1000.0)
+
+    backend_client.patch_alert_description.assert_not_called()
+
+
+def test_behavioral_alert_related_endpoint_is_the_most_frequent_endpoint():
+    pipeline, backend_client = _make_rich_pipeline(behavioral_is_anomaly=True)
+    pipeline.traffic_window.top_endpoint.return_value = ("/v1/payments", 0.54)
+    backend_client.post_alert.return_value = "beh-1"
+
+    pipeline.process("client_yogun_0000", "/v1/accounts", 190, timestamp=1000.0)
+
+    _, kwargs = backend_client.post_alert.call_args
+    assert kwargs["related_endpoint"]=="/v1/payments"
+
+
+def test_behavioral_alert_related_endpoint_falls_back_to_current_endpoint_when_lookup_fails():
+    pipeline, backend_client = _make_rich_pipeline(behavioral_is_anomaly=True)
+    pipeline.traffic_window.top_endpoint.side_effect = RuntimeError("redis yok")
+    backend_client.post_alert.return_value = "beh-1"
+
+    pipeline.process("client_yogun_0000", "/v1/accounts", 190, timestamp=1000.0)
+
+    _, kwargs = backend_client.post_alert.call_args
+    assert kwargs["related_endpoint"] == "/v1/accounts"
+
+def test_performance_alert_related_endpoint_stays_the_measured_endpoint():
+    pipeline, backend_client= _make_rich_pipeline(perf_is_anomaly=True)
+    pipeline.traffic_window.top_endpoint.return_value = ("/v1/payments", 0.54)
+    backend_client.post_alert.return_value = "perf-1"
+
+    pipeline.process("client_yogun_0000", "/v1/accounts", 320, timestamp=1000.0)
+
+    _, kwargs = backend_client.post_alert.call_args
+    assert kwargs["related_endpoint"] == "/v1/accounts"

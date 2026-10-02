@@ -56,3 +56,15 @@ def test_events_outside_window_are_excluded(redis_client):
     # 60 saniye sonra, pencere (30s) dışında kalmış olmalı
     vector = window.feature_vector("client_c", now=1060.0)
     assert vector == [0.0, 0.0, 0.0]
+
+
+def test_top_endpoint_returns_name_and_share(redis_client):
+    window=ClientTrafficWindow(redis_client, window_seconds=60)
+    for i in range(3):
+        window.record("c1", "/v1/accounts", 40, timestamp=1000.0 + i)
+    window.record("c1", "/v1/payments", 40, timestamp=1004.0)
+
+    assert window.top_endpoint("c1", now=1010.0) == ("/v1/accounts", pytest.approx(0.75))
+
+def test_top_endpoint_is_none_for_empty_window (redis_client):
+    assert ClientTrafficWindow(redis_client).top_endpoint("yok", now=1000.0) is None
