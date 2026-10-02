@@ -1,7 +1,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(39, 52, 75, 0.4);
+  background-color: var(--color-overlay);
   z-index: 10;
 }
 
@@ -39,8 +39,9 @@
 }
 
 .headerTitle {
+  font-family: var(--font-display);
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--color-text-primary);
   margin: 0;
 }
@@ -62,14 +63,27 @@
 }
 
 .sectionTitle {
+  font-family: var(--font-display);
   font-size: 0.8rem;
   text-transform: uppercase;
   color: var(--color-text-secondary);
   margin: 0 0 0.5rem 0;
 }
 
+.client {
+  margin: 0;
+  font-size: 0.9rem;
+  color:var(--color-text-secondary);
+}
+
+.clientId {
+  font-family: var(--font-mono);
+  color : var(--color-text-primary);
+}
+
 .description {
   margin: 0;
+  white-space: pre-line;
   font-size: 0.9rem;
   line-height: 1.5;
   color: var(--color-text-primary);
@@ -89,7 +103,7 @@
 .metricValue {
   font-family: var(--font-mono);
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--color-text-primary);
 }
 

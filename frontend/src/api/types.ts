@@ -60,4 +60,17 @@ export interface DemoStatus {
   remaining_seconds: number | null;
   duration_seconds: number | null;
   error: string | null;
+  scorecard?: DemoScorecard | null;
+  scorecard_pending?: boolean;
 }
+
+// demo bitince simülatörün hesapladığı karne
+export interface DemoScorecard {
+  supheli: { total:number; behavioral: number };
+  yogun: { total: number; performance: number; behavioral_false: number };
+  normal: { total: number; false_alerts: number };
+  correlations: { total: number; supheli: number; yogun: number; normal: number };
+}
+
+//simülatörün gerçek profil etiketi için
+export type ClientProfiles = Record<string, string>;

@@ -39,7 +39,7 @@ describe('CorrelationDetailPanel', () => {
     render(<CorrelationDetailPanel alertId="alert-1" onClose={() => {}} />);
 
     expect(await screen.findByText('0.92')).toBeInTheDocument();
-    expect(screen.getByText('18.5%')).toBeInTheDocument();
+    expect(screen.getByText('18.5 req/s')).toBeInTheDocument(); // yüzde değil, req/s
     expect(screen.getByText('/v1/payments')).toBeInTheDocument();
     // description null olduğu için fallback şablon üretiliyor
     expect(
@@ -65,5 +65,32 @@ describe('CorrelationDetailPanel', () => {
 
     expect(acknowledgeAlert).toHaveBeenCalledWith('alert-1');
     expect(await screen.findByRole('button', { name: 'Onaylandı' })).toBeDisabled();
+  });
+
+  it('çok satırlı açıklamayı satır sonlarıyla gösteriyor', async () => {
+    vi.mocked(getAlertById).mockResolvedValue({
+      ...sampleDetail,
+      description: 'client_a: istek oranı 1.30 req/s.\nKorelasyon: client_a: davranışsal ve performans anomalisi birlikte oluştu.',
+    });
+    render(<CorrelationDetailPanel alertId="alert-1" onClose= {() => {}} />);
+
+    const description = await screen.findByText(/Korelasyon: client_a: davranışsal ve performans/);
+    expect(description.textContent).toContain('\n') ;
+    expect(screen.getByText('Neden alarm verdi?')).toBeInTheDocument();
+  });
+
+  it('istemciyi ve simülatör profil rozetini gösteriyor', async () => {
+    render(<CorrelationDetailPanel alertId="alert-1" onClose={() => {}} clientProfiles={{ client_a: 'supheli' }} />);
+
+    expect(await screen.findByText('client_a')).toBeInTheDocument();
+    expect(screen.getByText('şüpheli')).toBeInTheDocument() ;
+  });
+
+  it('profil bilgisi yoksa rozetsiz açılıyor', async () => {
+    render(<CorrelationDetailPanel alertId="alert-1" onClose={() => {}} />);
+
+    expect(await screen.findByText('client_a')).toBeInTheDocument();
+    expect(screen.queryByText('şüpheli')).not.toBeInTheDocument();
+
   });
 });

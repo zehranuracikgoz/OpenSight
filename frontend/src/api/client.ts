@@ -1,5 +1,6 @@
 import type {
   AlertDetail,
+  ClientProfiles,
   DashboardSummary,
   DemoStatus,
   PagedAlerts,
@@ -94,6 +95,14 @@ export async function checkApiAwake(retries = 15, delayMs = 4000): Promise<boole
 
 export function getDemoStatus(): Promise<DemoStatus> {
   return fetch(`${SIMULATOR_URL}/demo/status`).then((r) => r.json() as Promise<DemoStatus>);
+}
+
+export async function getDemoClients(): Promise<ClientProfiles> {
+  const response = await fetch(`${SIMULATOR_URL}/demo/clients`);
+  if (!response.ok) {
+    throw new Error (`/demo/clients isteği başarısız oldu: ${response.status}`);
+  }
+  return((await response.json()) as { clients: ClientProfiles }).clients;
 }
 
 export async function startDemo(durationSeconds?: number): Promise<DemoStatus> {

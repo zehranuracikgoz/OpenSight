@@ -84,4 +84,31 @@ describe('DemoControl', () => {
 
     await waitFor(() => expect(vi.mocked(getDemoStatus)).toHaveBeenCalledTimes(1));
   });
+
+  it('her durum güncellemesini onStatusChange ile bildiriyor', async () => {
+    const onStatusChange = vi.fn();
+    vi.mocked(getDemoStatus).mockResolvedValue(status({ state: 'calisiyor', remaining_seconds: 125 }));
+    render(<DemoControl onStatusChange={onStatusChange} />);
+
+    await waitFor(() => expect(onStatusChange).toHaveBeenCalledWith(expect.objectContaining({ state: 'calisiyor' })));
+  });
+
+  it('demo bitti ama karne hazırlanıyorsa yoklamaya devam edip hazır olunca duruyo', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(getDemoStatus)
+        .mockResolvedValueOnce(status({ state: 'bitti', scorecard_pending: true }))
+        .mockResolvedValue( status({ state: 'bitti', scorecard_pending: false }));
+      render(<DemoControl />);
+      await waitFor(() =>expect(getDemoStatus).toHaveBeenCalledTimes(1));
+
+      await vi.advanceTimersByTimeAsync(3100);
+      expect(getDemoStatus).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(getDemoStatus).toHaveBeenCalledTimes(2 );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

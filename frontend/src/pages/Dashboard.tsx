@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
-import { getDashboardSummary, getRecentAlerts } from '../api/client';
-import type { AlertListItem, DashboardSummary } from '../api/types';
+import { getDashboardSummary, getDemoClients, getRecentAlerts } from '../api/client';
+import type { AlertListItem, ClientProfiles, DashboardSummary, DemoStatus } from '../api/types';
 import { AlertsTable } from '../components/AlertsTable';
 import { CorrelationDetailPanel } from '../components/CorrelationDetailPanel';
 import { DemoControl } from '../components/DemoControl';
+import { DemoScorecard } from '../components/DemoScorecard';
 import { LatencyChart } from '../components/LatencyChart';
 import { MetricCard, type MetricTrend } from '../components/MetricCard';
 import styles from './Dashboard.module.css';
 
 const PAGE_SIZE = 10;
+// demo sırasında kartlar ve liste bu aralıkla tazeleniyor
+const DEMO_REFRESH_MS = 10000;
 
 const TIME_RANGE_OPTIONS = [
   { label: 'Son 1 Saat', hours: 1 },
@@ -33,6 +36,29 @@ export function Dashboard() {
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
   const [timeRangeHours, setTimeRangeHours] =useState(24);
   const [page, setPage] = useState(0) ;
+  const [demoStatus, setDemoStatus] = useState<DemoStatus | null>(null);
+  const [clientProfiles, setClientProfiles] = useState<ClientProfiles>({});
+  const [refreshTick, setRefreshTick] = useState(0);
+  const demoState = demoStatus?.state;
+  const scorecardPending = demoStatus?.scorecard_pending;
+
+  // simülatöre ulaşılamazsa rozet çıkmaması için
+  useEffect(() => {
+    getDemoClients()
+      .then(setClientProfiles)
+      .catch(() => setClientProfiles({}));
+  }, []);
+
+  useEffect(() => {
+    if (demoState !== 'calisiyor') return;
+    const id = setInterval(() => setRefreshTick((t) => t + 1), DEMO_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [demoState]);
+
+  // demo bitince ve karne hazır olunca bir kez daha tazeliyor
+  useEffect(() => {
+    if (demoState === 'bitti') setRefreshTick((t) => t + 1);
+  }, [demoState, scorecardPending]);
 
   useEffect(() => {
     getDashboardSummary(timeRangeHours)
@@ -41,7 +67,7 @@ export function Dashboard() {
         setError(null);
       })
       .catch(() => setError('Özet veriler alınamadı - backend çalışıyor mu?'));
-  }, [timeRangeHours]);
+  }, [timeRangeHours, refreshTick]);
 
   useEffect(() => {
     getRecentAlerts(PAGE_SIZE, page * PAGE_SIZE, timeRangeHours)
@@ -51,7 +77,7 @@ export function Dashboard() {
         setError(null);
       })
       .catch(() => setError('Alarm listesi alınamadı - backend çalışıyor mu?'));
-  }, [timeRangeHours, page]);
+  }, [timeRangeHours, page, refreshTick]);
 
   function handleTimeRangeChange(hours: number) {
     setTimeRangeHours(hours);
@@ -64,7 +90,7 @@ export function Dashboard() {
   return (
     <div>
       <div className={styles.toolbar}>
-        <DemoControl />
+        <DemoControl onStatusChange={setDemoStatus} />
         <label className={styles.timeRangeLabel}>
           Zaman Aralığı:{' '}
           <select
@@ -101,7 +127,7 @@ export function Dashboard() {
         />
         <MetricCard
           label="Ortalama Gecikme"
-          value={summary ? `${summary.averageLatencyMs.toFixed(0)} ms` : '—'}
+          value={summary && summary.averageLatencyMs > 0 ? `${summary.averageLatencyMs.toFixed(0)} ms` : '—'}
         />
         <MetricCard
           label="Aktif İstemci"
@@ -110,8 +136,12 @@ export function Dashboard() {
         />
       </div>
 
+      {demoState ==='bitti' && (
+        <DemoScorecard scorecard={demoStatus?.scorecard} pending={Boolean(scorecardPending)} />
+      )}
+
       <LatencyChart />
-      <AlertsTable alerts={alerts} onSelectAlert={setSelectedAlertId} />
+      <AlertsTable alerts={alerts} onSelectAlert={setSelectedAlertId} clientProfiles={clientProfiles} />
 
       {totalCount > 0 && (
         <div className={styles.pagination}>
@@ -141,7 +171,11 @@ export function Dashboard() {
       )}
 
       {selectedAlertId && (
-        <CorrelationDetailPanel alertId={selectedAlertId} onClose={() => setSelectedAlertId(null)} />
+        <CorrelationDetailPanel
+          alertId={selectedAlertId}
+          onClose={() => setSelectedAlertId(null)}
+          clientProfiles={clientProfiles}
+        />
       )}
     </div>
   );

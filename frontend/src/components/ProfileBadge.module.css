@@ -1,0 +1,23 @@
+.badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  border: 1px dashed currentColor;
+  font-size: 0.7rem;
+  font-weight: 500;
+  cursor: help;
+}
+
+.normal {
+  color: var(--color-profile-normal);
+}
+
+.yogun {
+  color: var(--color-profile-heavy);
+}
+
+.supheli {
+  color: var(--color-profile-suspicious);
+  
+}

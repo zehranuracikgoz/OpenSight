@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
+import logoSvg from '../assets/logo.svg?raw';
+import { ThemeToggle } from '../components/ThemeToggle';
 import styles from './Layout.module.css';
 
 interface LayoutProps {
@@ -39,7 +41,8 @@ export function Layout({ children }: LayoutProps) {
     <div className={styles.shell}>
       <aside className={styles.sidebar}>
         <div className={styles.brand}>
-          <img src="/logo.svg" alt="OpenSight" className={styles.brandLogo} />
+          {/* inline svg, renkler tema değişkenlerinden */}
+          <div className={styles.brandLogo} dangerouslySetInnerHTML={{ __html: logoSvg }} />
         </div>
         <nav className={styles.nav}>
           <NavLink
@@ -63,6 +66,7 @@ export function Layout({ children }: LayoutProps) {
         <header className={styles.topBar}>
           <span className={styles.scope}>api-gateway/eu-west-1</span>
           <span className={styles.envBadge}>{environment.toUpperCase()}</span>
+          <ThemeToggle />
         </header>
         <main className={styles.content}>{children}</main>
       </div>

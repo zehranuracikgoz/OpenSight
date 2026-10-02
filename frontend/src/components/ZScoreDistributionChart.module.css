@@ -17,7 +17,7 @@
 
 .anomalyCurve {
   fill: none;
-  stroke : var(--color-accent);
+  stroke : var(--color-correlation);
   stroke-width: 2;
 }
 
@@ -52,7 +52,7 @@
 }
 
 .anomalyDot {
-  background-color: var(--color-accent);
+  background-color: var(--color-correlation);
 }
 
 .illustrativeNote {

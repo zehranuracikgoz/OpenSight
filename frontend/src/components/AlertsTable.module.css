@@ -38,33 +38,38 @@
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
   font-size:0.75rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .typePerformans {
-  background-color: #dbeafe;
-  color: #1d4ed8;
+  background-color: var(--color-badge-performance-bg);
+  color: var(--color-badge-performance-text);
 }
 
 .typeDavranissal {
-  background-color: #ede9fe;
-  color: #6d28d9 ;
+  background-color: var(--color-badge-behavioral-bg);
+  color: var(--color-badge-behavioral-text);
 }
 
 .typeKorelasyonlu {
-  background-color: #fef3c7;
-  color: #b45309;
+  background-color: var(--color-badge-correlated-bg);
+  color: var(--color-badge-correlated-text);
 }
 .severityDusuk {
-  background-color: #d1fae5;
-  color: #047857;
+  background-color: var(--color-severity-low-bg);
+  color: var(--color-severity-low-text);
 }
 
 .severityOrta {
-  background-color: #fef3c7;
-  color: #b45309;
+  background-color: var(--color-severity-mid-bg);
+  color: var(--color-severity-mid-text);
 }
 .severityYuksek {
-  background-color: #fee2e2;
-  color: #b91c1c;
+  background-color: var(--color-severity-high-bg);
+  color:var(--color-severity-high-text);
+}
+
+.time {
+  font-family : var(--font-mono);
+  font-size: 0.82rem;
 }

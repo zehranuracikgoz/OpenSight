@@ -1,10 +1,12 @@
-import type { AlertListItem } from '../api/types';
+import type { AlertListItem, ClientProfiles } from '../api/types';
 import styles from './AlertsTable.module.css';
 import { EmptyState } from './EmptyState';
+import { ProfileBadge } from './ProfileBadge';
 
 interface AlertsTableProps {
   alerts: AlertListItem[];
   onSelectAlert?: (alertId: string) => void;
+  clientProfiles?: ClientProfiles;
 }
 
 const TYPE_CLASS: Record<string, string> = {
@@ -24,7 +26,7 @@ function formatTimestamp(iso: string): string {
 }
 
 // son alarmları listeliyor, hiç alarm yoksa EmptyState'e düşecek(ayrı bir sayfa yok, koşullu render
-export function AlertsTable({ alerts, onSelectAlert }: AlertsTableProps) {
+export function AlertsTable({ alerts, onSelectAlert, clientProfiles }: AlertsTableProps) {
   if (alerts.length === 0) {
     return <EmptyState />;
   }
@@ -46,7 +48,10 @@ export function AlertsTable({ alerts, onSelectAlert }: AlertsTableProps) {
             className={onSelectAlert ? styles.clickableRow : undefined}
             onClick={() => onSelectAlert?.(alert.alertId)}
           >
-            <td>{alert.clientId}</td>
+            <td>
+              {alert.clientId}
+              <ProfileBadge profile={clientProfiles?.[alert.clientId]} />
+            </td>
             <td>
               <span className={`${styles.badge} ${TYPE_CLASS[alert.type] ?? ''}`}>{alert.type}</span>
             </td>
@@ -55,7 +60,7 @@ export function AlertsTable({ alerts, onSelectAlert }: AlertsTableProps) {
                 {alert.severity}
               </span>
             </td>
-            <td>{formatTimestamp(alert.createdAt)}</td>
+            <td className={styles.time}>{formatTimestamp(alert.createdAt)}</td>
           </tr>
         ))}
       </tbody>

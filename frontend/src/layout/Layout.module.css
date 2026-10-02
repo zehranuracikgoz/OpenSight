@@ -16,14 +16,18 @@
 
 .brand {
   font-size: 1.05rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--color-text-primary);
   padding: 0.5rem 0.75rem 1.5rem;
 }
 
 .brandLogo {
-  display: block;
   width: 132px;
+}
+
+.brandLogo svg {
+  display: block;
+  width: 100%;
   height: auto;
 }
 
@@ -45,14 +49,14 @@
 }
 
 .navLink:hover {
-  background-color : rgba(135, 140, 145, 0.12);
+  background-color: var(--color-nav-hover-bg);
   color: var(--color-text-primary);
 }
 
 .navLinkActive {
-  background-color: rgba(135, 140, 145, 0.22);
+  background-color: var(--color-nav-active-bg);
   color: var(--color-text-primary);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .mainArea {
@@ -80,7 +84,7 @@
 .envBadge {
   margin-left: auto;
   font-size: 0.68rem;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.04em;
   padding: 0.2rem 0.6rem;
   border-radius: 999px;

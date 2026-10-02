@@ -45,4 +45,18 @@ describe('AlertsTable', () => {
 
     expect(onSelectAlert).toHaveBeenCalledWith('2');
   });
+
+  it('simülatör profilini istemcinin yanında etiket olarak gösteriyor', () => {
+    render(<AlertsTable alerts={sampleAlerts} clientProfiles={{ client_a: 'supheli', client_b: 'normal' }} />);
+
+    expect(screen.getByText('şüpheli')).toHaveAttribute('title', expect.stringContaining('Simülatör etiketi'));
+    expect(screen.getByText('normal')).toBeInTheDocument() ;
+  });
+
+  it('profil bilinmeyen istemcide rozet göstermiyor ', () => {
+    render(<AlertsTable alerts={sampleAlerts} clientProfiles={{}} />);
+
+    expect(screen.queryByText('şüpheli')).not.toBeInTheDocument() ;
+    expect(screen.queryByText('yoğun')).not.toBeInTheDocument();
+  });
 });

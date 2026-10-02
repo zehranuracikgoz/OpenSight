@@ -1,45 +1,130 @@
-:root {
-  --color-bg: #f5f1e9;
-  --color-sidebar-bg: #ece7d9;
-  --color-sidebar-active: #878c91;
-  --color-card-bg: #ffffff;
-  --color-card-border: #eeeeee;
-  --color-row-hover: #fcf6eb;
-  --color-table-header-bg: #faf8f3;
+/* açık tema varsayılan, data-theme index.html'de atanıyor */
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
 
-  --color-accent:#c97b2e;
-  --color-accent-strong: #dfa73d;
+  --color-bg: #f1eef6;
+  --color-sidebar-bg: #e6e1ef;
+  --color-nav-hover-bg: #dfdaeb;
+  --color-nav-active-bg: #d3cce3;
+  --color-card-bg:#fbfafd;
+  --color-card-border: #d9d3e6;
+  --color-row-hover: #f1eef6;
+  --color-table-header-bg: #f5f2fa;
+  --color-overlay: rgba(30, 36, 64, 0.35);
 
-  --color-text-primary: #27344b ;
-  --color-text-secondary: #6b7280;
-  --color-text-on-accent: #ffffff;
+  --color-text-primary:#1e2440;
+  --color-text-secondary: #635d7f;
 
-  --color-button-primary-bg: #3d4a63;
+  --color-button-primary-bg: #5b4fa0;
   --color-button-primary-text: #ffffff;
-  --color-button-secondary-bg: #ffffff;
-  --color-button-secondary-border: #d1d5db;
-  --color-button-secondary-text: #27344b;
+  --color-button-secondary-bg: #fbfafd;
+  --color-button-secondary-border: #c9c1dc;
+  --color-button-secondary-text: #1e2440;
 
-  --color-badge-production-bg: #dce3d5;
-  --color-badge-production-text: #4b5a4a;
+  --color-logo-eye: #7a4fa0 ;
 
-  --color-error-bg : #f6e3d8;
-  --color-error-text: #8a4a1f;
-  --color-success-bg: #dde5d3;
-  --color-success-text: #3f5b45;
+  --color-correlation: #a26528;
 
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04);
-  --shadow-panel: -2px 0 14px rgba(0, 0, 0 , 0.08);
+  --color-badge-behavioral-bg: #eee3f6;
+  --color-badge-behavioral-text: #6a3f86;
+  --color-badge-performance-bg: #e2ecf8;
+  --color-badge-performance-text: #2f527f;
+  --color-badge-correlated-bg: #f6e7d3;
+  --color-badge-correlated-text: #7a4a18;
 
+  --color-profile-suspicious: #b4475b;
+  --color-profile-heavy: #995f26;
+  --color-profile-normal: #6b6589;
+
+  --color-severity-low-bg: #ddf0e7 ;
+  --color-severity-low-text: #2e6f57;
+  --color-severity-mid-bg: #f6e7d3;
+  --color-severity-mid-text: #7a4a18;
+  --color-severity-high-bg: #f8e0e5;
+  --color-severity-high-text: #9a3448;
+
+  --color-success-bg: #ddf0e7;
+  --color-success-text: #2e6f57;
+  --color-badge-production-bg: #ddf0e7;
+  --color-badge-production-text: #2e6f57;
+  --color-error-bg: #f8e0e5;
+  --color-error-text: #9a3448;
+
+  --color-chart-latency: #2f527f;
+  --color-chart-rate: #a8692a;
+  --color-chart-grid: #d9d3e6;
+
+  --shadow-card:  0 1px 3px rgba(30, 36, 64, 0.06);
+  --shadow-panel: -2px 0 14px rgba(30, 36, 64, 0.12);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-bg: #121829;
+  --color-sidebar-bg: #0e1322;
+  --color-nav-hover-bg: #151c30;
+  --color-nav-active-bg: #1b2238;
+  --color-card-bg: #1b2238;
+  --color-card-border: #2b3452;
+  --color-row-hover: #222a45;
+  --color-table-header-bg:#161d32;
+  --color-overlay: rgba(6, 9, 18, 0.6);
+
+  --color-text-primary: #ece4d8;
+  --color-text-secondary: #9c98b8;
+
+  --color-button-primary-bg: #7062ba;
+  --color-button-primary-text: #f4f0ff;
+  --color-button-secondary-bg: #1b2238;
+  --color-button-secondary-border: #3a4568;
+  --color-button-secondary-text: #ece4d8;
+
+  --color-logo-eye: #c49bd9;
+
+  --color-correlation: #d9a066;
+
+  --color-badge-behavioral-bg:  #3a2d4a;
+  --color-badge-behavioral-text: #d9b8ea;
+  --color-badge-performance-bg: #22324a;
+  --color-badge-performance-text: #a9c6ec;
+  --color-badge-correlated-bg: #4a3624;
+  --color-badge-correlated-text: #ebc08f;
+
+  --color-profile-suspicious : #e0798a;
+  --color-profile-heavy : #d9a066;
+  --color-profile-normal : #9c98b8;
+
+  --color-severity-low-bg: #1f3a35;
+  --color-severity-low-text: #8fd3b8;
+  --color-severity-mid-bg: #4a3624;
+  --color-severity-mid-text: #ebc08f;
+  --color-severity-high-bg: #4a2430;
+  --color-severity-high-text: #f0a3b1;
+
+  --color-success-bg: #1f3a35;
+  --color-success-text: #8fd3b8;
+  --color-badge-production-bg: #1f3a35;
+  --color-badge-production-text: #8fd3b8;
+  --color-error-bg: #4a2430;
+  --color-error-text: #f0a3b1;
+
+  --color-chart-latency: #7fa6d6;
+  --color-chart-rate: #d9a066;
+  --color-chart-grid: #2b3452;
+
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-panel: -2px 0 14px rgba(0, 0, 0, 0.5);
+}
+
+:root {
   --radius-sm: 6px;
   --radius-md: 8px;
 
-  --font-sans:
-    system-ui,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
-  --font-mono: ui-monospace,'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace;
+  --font-display: 'Fraunces',Georgia, 'Times New Roman', serif;
+  --font-sans: 'DM Sans', system-ui,'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
 }
 
 * {
@@ -51,6 +136,13 @@ body {
   font-family: var(--font-sans);
   background-color: var(--color-bg);
   color: var(--color-text-primary);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 #root {

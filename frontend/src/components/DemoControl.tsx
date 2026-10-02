@@ -5,6 +5,8 @@ import styles from './DemoControl.module.css';
 
 const FAST_POLL_MS = 3000;
 const SLOW_POLL_MS = 15000;
+// bitişe yakın sık yokluyor
+const ENDING_SOON_SECONDS = 20;
 
 const STATE_LABELS: Record<DemoStatus['state'], string> = {
   bosta: 'Canlı Demoyu Başlat',
@@ -22,28 +24,37 @@ function formatRemaining(seconds: number): string {
 
 // "Canlı Demoyu Başlat" kontrolü - API uykudaysa bildiriyor, /demo/status'u duruma göre hızlı/yavaş
 // yokluyor; "bosta"/"bitti"'de yoklama duruyor ki demo bitince hiçbir şey servisleri uyanık tutmasın
-export function DemoControl() {
+export function DemoControl({ onStatusChange }: { onStatusChange?: (status: DemoStatus) => void }) {
   const [apiAwake, setApiAwake] = useState<boolean | null>(null);
   const [status, setStatus] = useState<DemoStatus | null>(null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
+
+  const applyStatus =useCallback((data: DemoStatus) => {
+    setStatus(data);
+    onStatusChangeRef.current?.(data);
+  }, []);
 
   const poll = useCallback(async () => {
     try {
       const data = await getDemoStatus();
       if (!mountedRef.current) return;
-      setStatus(data);
+      applyStatus(data);
       if (data.state === 'calisiyor') {
-        timeoutRef.current = setTimeout(poll, SLOW_POLL_MS);
-      } else if (data.state === 'uyaniyor' || data.state === 'model_hazirlaniyor') {
+        const endingSoon = (data.remaining_seconds ?? Infinity) <= ENDING_SOON_SECONDS;
+        timeoutRef.current = setTimeout(poll, endingSoon ? FAST_POLL_MS : SLOW_POLL_MS);
+      } else if (data.state === 'uyaniyor' || data.state === 'model_hazirlaniyor' || data.scorecard_pending) {
+        // karne hazırlanırken de yokluyor
         timeoutRef.current = setTimeout(poll, FAST_POLL_MS);
       }
     } catch {
       if (mountedRef.current) timeoutRef.current = setTimeout(poll, FAST_POLL_MS);
     }
-  }, []);
+  }, [applyStatus]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -62,7 +73,7 @@ export function DemoControl() {
     setStartError(null);
     try {
       const data = await startDemo();
-      setStatus(data);
+      applyStatus(data);
       poll();
     } catch (err) {
       setStartError(err instanceof Error ? err.message : 'demo başlatılamadı');

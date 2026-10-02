@@ -10,6 +10,7 @@
 }
 
 .label {
+  font-family: var(--font-display);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
 }
@@ -23,18 +24,18 @@
 .value {
   font-family: var(--font-mono);
   font-size: 1.75rem;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--color-text-primary);
 }
 
 .trend {
   font-family: var(--font-mono);
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .up {
-  color: var(--color-accent);
+  color: var(--color-correlation);
 }
 
 .down {

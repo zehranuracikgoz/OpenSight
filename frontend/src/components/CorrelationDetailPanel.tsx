@@ -10,13 +10,16 @@ import {
   YAxis,
 } from 'recharts';
 import { acknowledgeAlert, getAlertById, silenceAlert } from '../api/client';
-import type { AlertDetail } from '../api/types';
+import type { AlertDetail, ClientProfiles } from '../api/types';
 import { buildMockCorrelationSeries } from '../mock/mockCorrelationSeries';
+import { axisProps, COLORS, gridProps, legendProps, tooltipProps } from './chartTheme';
 import styles from './CorrelationDetailPanel.module.css';
+import { ProfileBadge } from './ProfileBadge';
 
 interface CorrelationDetailPanelProps {
   alertId: string;
   onClose: () => void;
+  clientProfiles?: ClientProfiles;
 }
 
 function formatTime(iso: string): string {
@@ -33,7 +36,7 @@ function formatMetric(value: number | null, suffix = ''): string {
 }
 
 // bir alert'e tıklanınca sağdan kayan panel
-export function CorrelationDetailPanel({ alertId, onClose }: CorrelationDetailPanelProps) {
+export function CorrelationDetailPanel({ alertId, onClose, clientProfiles }: CorrelationDetailPanelProps) {
   const [detail, setDetail] = useState<AlertDetail | null>(null);
   const [error, setError] =useState<string | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
@@ -78,22 +81,26 @@ export function CorrelationDetailPanel({ alertId, onClose }: CorrelationDetailPa
 
         {detail && (
           <div className={styles.body}>
+            <p className={styles.client}>
+              İstemci: <span className={styles.clientId}>{detail.clientId}</span>
+              <ProfileBadge profile={clientProfiles?.[detail.clientId]} />
+            </p>
             <div>
               <p className={styles.sectionTitle}>Gecikme + İstek Oranı (son 30 dakika)</p>
               <ResponsiveContainer width="100%" height={180}>
                 <LineChart data={series}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="timestamp" tickFormatter={formatTime} minTickGap={40} />
-                  <YAxis yAxisId="latency" width={40} />
-                  <YAxis yAxisId="rate" orientation="right" width={30} />
-                  <Tooltip labelFormatter={(value) => formatTime(String(value))} />
-                  <Legend />
+                  <CartesianGrid {...gridProps} />
+                  <XAxis dataKey="timestamp" tickFormatter={formatTime} minTickGap={40} {...axisProps} />
+                  <YAxis yAxisId="latency" width={40} {...axisProps} />
+                  <YAxis yAxisId="rate" orientation="right" width={30} {...axisProps} />
+                  <Tooltip {...tooltipProps} labelFormatter={(value) => formatTime(String(value))} />
+                  <Legend {...legendProps} />
                   <Line
                     yAxisId="latency"
                     type="monotone"
                     dataKey ="latencyMs"
                     name="Gecikme (ms)"
-                    stroke="#2563eb"
+                    stroke={COLORS.latency}
                     dot={false}
                   />
                   <Line
@@ -101,7 +108,7 @@ export function CorrelationDetailPanel({ alertId, onClose }: CorrelationDetailPa
                     type="monotone"
                     dataKey="requestRate"
                     name="İstek oranı (/sn)"
-                    stroke="#f97316"
+                    stroke={COLORS.rate}
                     dot={false}
                   />
                 </LineChart>
@@ -110,7 +117,7 @@ export function CorrelationDetailPanel({ alertId, onClose }: CorrelationDetailPa
             </div>
 
             <div>
-              <p className={styles.sectionTitle}>Açıklama</p>
+              <p className={styles.sectionTitle}>Neden alarm verdi?</p>
               <p className={styles.description}>{detail.description ?? fallbackDescription(detail)}</p>
             </div>
 
@@ -127,7 +134,7 @@ export function CorrelationDetailPanel({ alertId, onClose }: CorrelationDetailPa
                 </div>
                 <div>
                   <span className={styles.metricLabel}>İstek Oranı</span>
-                  <span className={styles.metricValue}>{formatMetric(detail.requestRatePct, '%')}</span>
+                  <span className={styles.metricValue}>{formatMetric(detail.requestRatePct, ' req/s')}</span>
                 </div>
                 <div>
                   <span className={styles.metricLabel}>İlişkili Endpoint</span>

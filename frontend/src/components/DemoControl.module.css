@@ -31,7 +31,7 @@
 
 .waking {
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: 500;
   padding: 0.3rem 0.75rem;
   border-radius: 999px;
   background-color: var(--color-error-bg);
