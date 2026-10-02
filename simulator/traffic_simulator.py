@@ -104,6 +104,10 @@ def demo_wake_timeout() -> float:
     return float(os.environ.get("SIMULATOR_DEMO_WAKE_TIMEOUT", str(DEFAULT_DEMO_WAKE_TIMEOUT_SECONDS)))
 
 
+def demo_scorecard_grace() -> float:
+    return float(os.environ.get("SIMULATOR_DEMO_SCORECARD_GRACE", "5"))
+
+
 def demo_keepalive_interval() -> float:
     return float(os.environ.get("SIMULATOR_DEMO_KEEPALIVE_INTERVAL", str(DEFAULT_DEMO_KEEPALIVE_INTERVAL_SECONDS)))
 
@@ -132,6 +136,46 @@ class BurstEvent:
 
 def make_client_id(profile: Profile, index: int) -> str:
     return f"client_{profile.value}_{index:04d}"
+
+
+def client_profiles(clients_per_profile: int) -> dict[str, str]:
+    return {make_client_id(profile, i): profile.value for profile in Profile for i in range(clients_per_profile)}
+
+
+def _parse_ts(text: str) -> datetime:
+    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+
+
+def compute_scorecard(
+    profiles: dict[str, str], alerts: list[dict], correlations: list[dict], window_start: datetime, window_end: datetime
+) -> dict:
+    """demo penceresindeki alarmları gerçek profile göre sayıyor, tanımlar evaluate.py ile aynı"""
+    in_window = lambda iso: window_start <= _parse_ts(iso) <= window_end  # noqa: E731
+    demo_alerts = [a for a in alerts if a["clientId"] in profiles and in_window(a["createdAt"])]
+    demo_correlations = [c for c in correlations if c["clientId"] in profiles and in_window(c["detectedAt"])]
+
+    def clients_with(profile: str, alert_type: str) -> int:
+        return len({a["clientId"] for a in demo_alerts if profiles[a["clientId"]] == profile and a["type"] == alert_type})
+
+    def total(profile: str) -> int:
+        return sum(1 for p in profiles.values() if p ==profile)
+
+    return {
+        "supheli": {"total": total("supheli"), "behavioral": clients_with("supheli", "Davranışsal")},
+        "yogun": {
+            "total":total("yogun"),
+            "performance": clients_with("yogun", "Performans"),
+            "behavioral_false": clients_with("yogun", "Davranışsal"),
+        },
+        "normal": {
+            "total": total("normal"),
+            "false_alerts": sum(1 for a in demo_alerts if profiles[a["clientId"]] == "normal"),
+        },
+        "correlations": {
+            "total" : len(demo_correlations),
+            **{p: sum(1 for c in demo_correlations if profiles[c["clientId"]] == p) for p in ("supheli", "yogun", "normal")},
+        },
+    }
 
 
 def env_flag(name: str, default: bool) -> bool:
@@ -415,6 +459,12 @@ class DemoController:
         self._started_at: float | None = None
         self._duration_seconds = 0.0
         self._error: str | None = None
+        self._scorecard: dict | None = None
+        self._scorecard_pending = False
+
+    def clients(self) -> dict[str, str]:
+        """istemci -> gerçek profil, dashboard rozeti için"""
+        return client_profiles(self.clients_per_profile)
 
     def status(self) -> dict:
         with self._lock:
@@ -426,6 +476,8 @@ class DemoController:
                 "remaining_seconds": remaining,
                 "duration_seconds": self._duration_seconds if self._state == "calisiyor" else None,
                 "error": self._error,
+                "scorecard" : self._scorecard,
+                "scorecard_pending": self._scorecard_pending,
             }
 
     def _scale_mismatch(self) -> str | None:
@@ -453,6 +505,8 @@ class DemoController:
                 return False, mismatch
             self._state = "uyaniyor"
             self._error = None
+            self._scorecard = None
+            self._scorecard_pending =  False
 
         duration = min(max(duration_seconds or demo_default_duration(), 60.0), demo_max_duration())
         threading.Thread(target=self._run, args=(duration,), daemon=True).start()
@@ -497,6 +551,7 @@ class DemoController:
         )
         with self._lock:
             self._sim = sim
+        traffic_started = datetime.now(timezone.utc)
         sim.run(self.clients_per_profile)
         sim._suspicious_go.wait()  # model hazır oldu ya da ready_timeout doldu
 
@@ -516,6 +571,30 @@ class DemoController:
         with self._lock:
             self._state = "bitti"
             self._sim = None
+            self._scorecard_pending = True
+        self._build_scorecard(traffic_started)
+
+    def _fetch_scorecard_inputs(self) ->tuple[list[dict], list[dict]]:
+        alerts = requests.get(f"{self.base_url}/api/alerts", params={"take": 500, "skip": 0, "hours": 1}, timeout= 10)
+        alerts.raise_for_status()
+        correlations = requests.get(f"{self.base_url}/api/alerts/correlations", timeout=10)
+        correlations.raise_for_status()
+        return alerts.json()["items"], correlations.json()
+
+    def _build_scorecard(self, window_start: datetime) -> None:
+        """demo bitince alarm ve korelasyonları çekip karneyi hesaplıyo, hata olursa karne boş kalıyor"""
+        scorecard = None
+        try:
+            time.sleep(demo_scorecard_grace())
+            alerts, correlations = self._fetch_scorecard_inputs()
+            scorecard = compute_scorecard(
+                self.clients(), alerts, correlations, window_start, datetime.now(timezone.utc)
+            )
+        except Exception as exc:
+            print(f"[simulator] demo karnesi hesaplanamadı: {exc}", flush=True)
+        with self._lock:
+            self._scorecard = scorecard
+            self._scorecard_pending = False
 
     def _keep_awake_loop(self, stop_event: threading.Event) -> None:
         """demo çalışırken API + analiz servisini uyanık tutuyor (simülatör kendi /demo/status'uyla uyanıyor)"""
@@ -554,6 +633,8 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"status": "healthy"})
         elif self.path == "/demo/status":
             self._send_json(200, self.server.demo_controller.status())
+        elif self.path == "/demo/clients":
+            self._send_json(200, {"clients": self.server.demo_controller.clients()})
         else:
             self._send_json(404, {"error": "bulunamadı"})
 

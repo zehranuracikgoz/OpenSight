@@ -1,6 +1,7 @@
 import json
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -456,6 +457,8 @@ class TestDemoController:
         monkeypatch.setattr(controller, "_ping_once", lambda url: True)
         monkeypatch.setattr(ts, "demo_wake_timeout", lambda: 5.0)
         monkeypatch.setattr(ts, "demo_keepalive_interval", lambda: 0.05)
+        monkeypatch.setattr(ts, "demo_scorecard_grace", lambda: 0)
+        monkeypatch.setattr(controller, "_fetch_scorecard_inputs", lambda: ([], []))
 
         fake_sim = MagicMock()
         fake_sim._suspicious_go = threading.Event()
@@ -472,6 +475,67 @@ class TestDemoController:
         assert controller.status()["state"] == "bitti"
         assert r.get(ts.DemoQuota.LAST_STARTED_KEY) is not None
         fake_sim.stop.assert_called_once()
+        assert controller.status()["scorecard_pending"] is False
+        assert controller.status()["scorecard"]["supheli"] == {"total": 3, "behavioral": 0}
+
+    def test_build_scorecard_uses_fetched_alerts_inside_window(self, monkeypatch):
+        controller=self._controller()
+        monkeypatch.setattr(ts, "demo_scorecard_grace", lambda: 0)
+        now = datetime.now(timezone.utc)
+        alert={"alertId": "a1", "clientId": "client_supheli_0000", "type": "Davranışsal", "createdAt": now.isoformat()}
+        monkeypatch.setattr(controller, "_fetch_scorecard_inputs", lambda: ([alert], []))
+
+        controller._build_scorecard(now - timedelta(minutes=5))
+
+        status = controller.status()
+        assert status["scorecard_pending"] is False
+        assert status["scorecard"]["supheli"]["behavioral"] ==1
+
+    def test_scorecard_stays_empty_when_api_unreachable(self, monkeypatch):
+        controller = self._controller()
+        monkeypatch.setattr(ts, "demo_scorecard_grace", lambda: 0)
+
+        def boom():
+            raise requests.ConnectionError("api kapalı")
+
+        monkeypatch.setattr(controller, "_fetch_scorecard_inputs", boom)
+        with controller._lock:
+            controller._scorecard_pending = True
+
+        controller._build_scorecard(datetime.now(timezone.utc))
+
+        status = controller.status()
+        assert status["scorecard"] is None
+        assert status["scorecard_pending"] is False
+
+    def test_status_reports_scorecard_pending_while_it_is_being_built(self, monkeypatch):
+        controller = self._controller()
+        release = threading.Event()
+        monkeypatch.setattr(ts, "demo_scorecard_grace", lambda : 0)
+        monkeypatch.setattr(controller, "_fetch_scorecard_inputs", lambda: (release.wait(2), ([], []))[1])
+        with controller._lock:
+            controller._scorecard_pending = True
+
+        thread = threading.Thread(target=controller._build_scorecard, args=(datetime.now(timezone.utc),), daemon=True)
+        thread.start()
+        time.sleep (0.1)
+        assert controller.status()["scorecard_pending"] is True
+
+        release.set()
+        thread.join(timeout=3)
+        assert controller.status()["scorecard_pending"] is False
+
+    def test_new_demo_start_clears_previous_scorecard(self, monkeypatch):
+        controller = self._controller()
+        with controller._lock :
+            controller._state = "bitti "
+            controller._scorecard = {"eski": True}
+        monkeypatch.setattr(controller, "_run", lambda duration: None)
+
+        ok, _ = controller.start(None)
+
+        assert ok is True
+        assert controller.status()["scorecard"] is None
 
 
 class TestDemoHttpEndpoints:
@@ -524,3 +588,96 @@ class TestDemoHttpEndpoints:
         finally:
             server.shutdown()
             thread.join(timeout=2)
+
+    def test_demo_clients_endpoint_returns_true_profiles(self):
+        server, thread = self._start_server(18215)
+        try:
+            response = requests.get("http://127.0.0.1:18215/demo/clients", timeout=3)
+            assert response.status_code ==200
+            clients = response.json()["clients"]
+            assert clients["client_supheli_0001"] == "supheli "
+            assert len(clients) == 9
+            assert response.headers["Access-Control-Allow-Origin"]
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+
+
+DEMO_START = datetime(2026, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
+DEMO_END = DEMO_START + timedelta(minutes=5)
+
+
+def _at(seconds):
+    return (DEMO_START + timedelta(seconds=seconds)).isoformat()
+
+
+def _alert(client_id, alert_type, seconds):
+    return {"alertId": f"{client_id}-{alert_type}-{seconds}", "clientId": client_id, "type": alert_type, "createdAt": _at(seconds)}
+
+
+def _corr(client_id, seconds):
+    return {"correlationId": f"c-{client_id}-{seconds}", "clientId": client_id, "detectedAt": _at(seconds)}
+
+
+def test_client_profiles_maps_every_client_to_its_true_profile():
+    assert ts.client_profiles(2) == {
+        "client_normal_0000": "normal", "client_normal_0001": "normal",
+        "client_yogun_0000": "yogun", "client_yogun_0001": "yogun",
+        "client_supheli_0000": "supheli", "client_supheli_0001": "supheli",
+    }
+
+
+def test_scorecard_counts_distinct_clients_per_profile_and_type():
+    alerts = [
+        _alert("client_supheli_0000", "Davranışsal", 60),
+        _alert("client_supheli_0000", "Davranışsal", 200),  #ayni istemci tek sayiliyor
+        _alert("client_supheli_0001", "Davranışsal", 90),
+        _alert("client_supheli_0002", "Performans", 90),  # supheli performans alarmi davranissal degil
+        _alert("client_yogun_0000", "Performans", 100),
+        _alert("client_yogun_0001", "Davranışsal", 100),  # yogun davranissal alarmi performans degil
+        _alert("client_normal_0000", "Davranışsal", 120),
+        _alert("client_normal_0000", "Performans", 130),
+    ]
+    correlations = [
+        _corr("client_supheli_0000", 61), _corr("client_yogun_0000", 101), _corr("client_supheli_0001", 91),
+        _corr("client_normal_0001", 150),
+    ]
+
+    card = ts.compute_scorecard(ts.client_profiles(3), alerts, correlations, DEMO_START, DEMO_END)
+
+    assert card["supheli"] == {"total": 3, "behavioral" : 2}
+    assert card["yogun"] == {"total": 3, "performance": 1, "behavioral_false": 1}
+    assert card["normal"] == {"total": 3, "false_alerts": 2}
+    assert card["correlations"] == {"total": 4, "supheli": 2, "yogun": 1, "normal": 1}
+
+
+def test_scorecard_ignores_alerts_and_correlations_outside_the_demo_window():
+    alerts = [
+        _alert("client_supheli_0000", "Davranışsal", -60),
+        _alert("client_supheli_0001", "Davranışsal", 400),
+        _alert("client_normal_0000", "Davranışsal", -1),
+    ]
+    correlations = [_corr("client_supheli_0000", -10), _corr("client_supheli_0000", 301)]
+
+    card = ts.compute_scorecard(ts.client_profiles(3), alerts, correlations, DEMO_START, DEMO_END)
+
+    assert card["supheli"]["behavioral"]== 0
+    assert card["normal"]["false_alerts"] ==0
+    assert card["correlations"] == {"total": 0, "supheli": 0, "yogun": 0, "normal": 0}
+
+
+def test_scorecard_ignores_clients_that_are_not_part_of_the_demo():
+    alerts = [_alert("client_supheli_0099", "Davranışsal", 60), _alert("baska_istemci", "Performans", 60)]
+
+    card = ts.compute_scorecard(ts.client_profiles(3), alerts, [_corr("client_supheli_0099", 61)], DEMO_START, DEMO_END)
+
+    assert card["supheli"]["behavioral"] == 0
+    assert card["correlations"]["total"] == 0
+
+
+def test_scorecard_parses_z_suffixed_timestamps():
+    alert ={"alertId": "a", "clientId": "client_supheli_0000", "type": "Davranışsal", "createdAt": _at(10).replace("+00:00", "Z")}
+
+    card = ts.compute_scorecard(ts.client_profiles(3), [alert], [], DEMO_START, DEMO_END)
+
+    assert card["supheli"]["behavioral"] == 1
