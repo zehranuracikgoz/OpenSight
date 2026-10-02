@@ -139,7 +139,7 @@ def test_performance_explanation_uses_latency_window_mean_and_zscore():
 
     text = generator.fallback_template("client_yogun_0000", "Performans", "Orta", metrics)
 
-    assert text =="client_yogun_0000: gecikme 320 ms; son 50 isteğin ortalaması 62 ms, z = 4.7"
+    assert text =="client_yogun_0000: gecikme 320 ms; son 50 isteğin ortalaması 62 ms, z = 4.7."
 
 
 def test_fallback_template_without_metrics_keeps_generic_text():
@@ -158,7 +158,7 @@ def test_combined_explanation_is_one_short_sentence_without_repeating_details():
 
     text = generator.combined_explanation("gecikme 344 ms, z = 3.5")
 
-    assert text == "davranışsal ve performans anomalisi aynı pencerede oluştu (gecikme 344 ms, z = 3.5)"
+    assert text == "davranışsal ve performans anomalisi aynı pencerede oluştu (gecikme 344 ms, z = 3.5)."
 
 
 def test_summary_is_only_filled_for_performance_alerts():
