@@ -26,6 +26,7 @@ from app.services.behavioral_detector import BehavioralAnomalyDetector
 from app.services.cold_start import ColdStartManager
 from app.services.correlation_engine import CorrelationEngine
 from app.services.explanation_generator import ExplanationGenerator
+from app.services.latency_metrics import LatencyMetrics
 from app.services.performance_detector import RollingZScoreDetector
 from app.services.threshold_settings import ThresholdSettingsService
 from app.services.traffic_window import ClientTrafficWindow
@@ -75,12 +76,16 @@ cold_start = ColdStartManager(redis_client, behavioral_detector, cold_start_seco
 correlation_engine = CorrelationEngine(window_seconds=30 * 60)
 explanation_generator = ExplanationGenerator(ollama_url=OLLAMA_URL, model=OLLAMA_MODEL)
 backend_client = BackendClient(BACKEND_URL)
-threshold_settings = ThresholdSettingsService(redis_client, performance_detector, behavioral_detector)
+latency_metrics = LatencyMetrics(redis_client)
+threshold_settings = ThresholdSettingsService(
+    redis_client, performance_detector, behavioral_detector, baseline_reader=cold_start.read_baseline
+)
 
 anomaly_pipeline = AnomalyPipeline(
     performance_detector, behavioral_detector, traffic_window, cold_start, correlation_engine, backend_client,
     threshold_settings=threshold_settings,
     explanation_generator=explanation_generator,
+    latency_metrics=latency_metrics,
     alert_cooldown_seconds=ALERT_COOLDOWN_SECONDS,
 )
 traffic_consumer = RabbitMqTrafficConsumer(RABBITMQ_HOST, anomaly_pipeline, port=RABBITMQ_PORT, uri=RABBITMQ_URI or None)
@@ -116,6 +121,12 @@ def status() -> dict:
         "baseline_scale": cold_start.baseline_scale(),
         "last_trained_at": behavioral_detector.last_trained_at,
     }
+
+
+@app.get("/metrics/latency")
+def get_latency_metrics(minutes: int = 30, client_id: str | None = None) -> dict:
+    """son N dakikanın dakikalık ortalama gecikmesi ve istek sayısı, client_id verilirse sadece o istemci"""
+    return latency_metrics.series(minutes=minutes, client_id=client_id)
 
 
 class LatencySample(BaseModel):

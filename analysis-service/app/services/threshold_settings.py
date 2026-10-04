@@ -9,12 +9,14 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from redis import Redis
 from redis.exceptions import RedisError
 
 from app.services.behavioral_detector import BehavioralAnomalyDetector
+from app.services.cold_start import MIN_BASELINE_SAMPLES
 from app.services.performance_detector import RollingZScoreDetector
 
 logger = logging.getLogger("opensight.threshold_settings")
@@ -40,8 +42,10 @@ class ThresholdSettingsService:
         redis_client: Redis,
         performance_detector: RollingZScoreDetector,
         behavioral_detector: BehavioralAnomalyDetector,
+        baseline_reader: Callable[[], list[list[float]]] | None = None,
     ):
         self.redis = redis_client
+        self.baseline_reader = baseline_reader
         self.performance_detector = performance_detector
         self.behavioral_detector = behavioral_detector
         self._apply_persisted_values()
@@ -77,10 +81,28 @@ class ThresholdSettingsService:
             self.redis.set(Z_SCORE_KEY, z_score_threshold)
 
         if contamination is not None:
+            changed = contamination != self.behavioral_detector.contamination
             self.behavioral_detector.set_contamination(contamination)
             self.redis.set(CONTAMINATION_KEY, contamination)
+            if changed:
+                self._retrain_with_baseline()
 
         return self.get_settings()
+
+    def _retrain_with_baseline(self) -> None:
+        """contamination değişince modeli Redis'teki temiz baseline ile hemen eğitiyor, baseline canlı trafikle güncellenmiyor"""
+        if self.baseline_reader is None or not self.behavioral_detector.is_fitted:
+            return  # model henüz eğitilmediyse yeni oran ilk eğitimde kullanılacak
+        try:
+            baseline = self.baseline_reader()
+        except RedisError as exc:
+            logger.warning("baseline okunamadı (%s), model yeniden eğitilmedi", exc)
+            return
+        if len(baseline) < MIN_BASELINE_SAMPLES:
+            logger.warning("baseline yetersiz (%d örnek), model yeniden eğitilmedi", len(baseline))
+            return
+        self.behavioral_detector.retrain(baseline)
+        logger.info("contamination değişti, model %d baseline örneğiyle yeniden eğitildi", len(baseline))
 
     def record_alert(self, alert_type: str) -> None:
         """bir alarm başarıyla backend'e yazıldığında çağrılıyor - 24 saatlik sayaç için.

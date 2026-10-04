@@ -70,6 +70,9 @@ class ColdStartManager:
                 len(baseline),
             )
 
+    def read_baseline(self) -> list[list[float]]:
+        return self._read_baseline()
+
     def _read_baseline(self) -> list[list[float]]:
         raw = self.redis.lrange(BASELINE_KEY, 0, -1)
         # redis_client decode_responses=True olmadan da çağrılabilir (bytes döner), bu yüzden burada normalize ediyor

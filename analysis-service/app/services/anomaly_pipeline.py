@@ -15,6 +15,7 @@ from app.services.behavioral_detector import BehavioralAnomalyDetector
 from app.services.cold_start import ColdStartManager
 from app.services.correlation_engine import CorrelationEngine, PendingAlert
 from app.services.explanation_generator import ExplanationGenerator
+from app.services.latency_metrics import LatencyMetrics
 from app.services.performance_detector import RollingZScoreDetector
 from app.services.threshold_settings import ThresholdSettingsService
 from app.services.traffic_window import ClientTrafficWindow
@@ -50,6 +51,7 @@ class AnomalyPipeline:
         backend_client: BackendClient,
         threshold_settings: ThresholdSettingsService | None = None,
         explanation_generator: ExplanationGenerator | None = None,
+        latency_metrics: LatencyMetrics | None = None,
         alert_cooldown_seconds: float = DEFAULT_ALERT_COOLDOWN_SECONDS,
     ):
         self.performance_detector = performance_detector
@@ -60,6 +62,7 @@ class AnomalyPipeline:
         self.backend_client = backend_client
         self.threshold_settings = threshold_settings
         self.explanation_generator = explanation_generator
+        self.latency_metrics = latency_metrics
         self.alert_cooldown_seconds = alert_cooldown_seconds
         # (istemci, alarm türü) -> son alarmın zamanı; aynı tür alarm cooldown süresince tekrar yazılmıyor
         self._last_alert_at: dict[tuple[str, str], float] = {}
@@ -71,6 +74,8 @@ class AnomalyPipeline:
     def process(self, client_id: str, endpoint: str, latency_ms: float, timestamp: float) -> None:
         """tek bir trafik olayını işliyor - tespit, korelasyon ve backend'e yazma burada birleşiyor"""
         perf_result = self.performance_detector.update_and_score(client_id, latency_ms)
+        if self.latency_metrics is not None:
+            self.latency_metrics.record(client_id, latency_ms, timestamp)  # sadece bellek, dakika dolunca Redis
         feature_vector = self.traffic_window.record(client_id, endpoint, latency_ms, timestamp)
         self.cold_start.handle(client_id, feature_vector, timestamp)
 
