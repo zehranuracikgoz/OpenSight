@@ -16,11 +16,7 @@ export function toChartData(series: LatencySeries): ChartPoint[] {
   }));
 }
 
-// 5 dakikalık yuvarlak etiketler, sırayla ve aralıklı
+// kategorik eksende etiketler 5 dakikanın katlarındaki veri noktaları, tooltip bundan etkilenmiyor
 export function fiveMinuteTicks(data: ChartPoint[]): number[] {
-  if (data.length === 0) return [];
-  const step = 5 * 60_000;
-  const ticks: number[] = [];
-  for (let t = Math.ceil(data[0].time / step) * step; t <= data[data.length - 1].time; t += step) ticks.push(t);
-  return ticks;
+  return data.filter((point) => new Date(point.time).getMinutes() % 5 === 0).map((point) => point.time);
 }

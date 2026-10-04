@@ -102,13 +102,10 @@ export function CorrelationDetailPanel({ alertId, onClose, clientProfiles }: Cor
                   <CartesianGrid {...gridProps} />
                   <XAxis
                     dataKey="time"
-                    type="number"
-                    scale="time"
-                    domain={['dataMin', 'dataMax']}
                     ticks={fiveMinuteTicks(chartData)}
                     tickFormatter={formatClock}
+                    interval={0}
                     padding={{ left: 8, right: 16 }}
-                    minTickGap={24}
                     {...axisProps}
                   />
                   <YAxis yAxisId="latency" width={40} {...axisProps} />

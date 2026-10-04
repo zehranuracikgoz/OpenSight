@@ -1,18 +1,9 @@
-import {
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  ResponsiveContainer,
-  Scatter,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { AlertListItem, CorrelationListItem, LatencySeries } from '../api/types';
 import { formatClock, parseApiDate } from '../time';
 import { axisProps, COLORS, gridProps, tooltipProps } from './chartTheme';
 import styles from './LatencyChart.module.css';
-import { fiveMinuteTicks, toChartData, type ChartPoint } from './latencySeries';
+import { fiveMinuteTicks, toChartData } from './latencySeries';
 
 interface LatencyChartProps {
   series: LatencySeries | null;
@@ -21,27 +12,45 @@ interface LatencyChartProps {
   correlations: CorrelationListItem[];
 }
 
+interface DotProps {
+  cx?: number;
+  cy?: number;
+  value?: number | null;
+  index?: number;
+}
+
 const MINUTE = 60_000;
 
-// alarmın dakikasındaki ortalama gecikme noktasına işaret koyuyor, o dakikada veri yoksa işaret yok
-function markerAt(iso: string, byMinute: Map<number, ChartPoint>) {
-  const point = byMinute.get(Math.floor(parseApiDate(iso).getTime() / MINUTE) * MINUTE);
-  return point && point.latencyMs !== null ? { time: point.time, latencyMs: point.latencyMs } : null;
+function PerformanceDot({ cx, cy, value }: DotProps) {
+  if (value == null || cx == null || cy == null) return <g />;
+  return <circle cx={cx} cy={cy} r={5} fill={COLORS.performanceAnomaly} />;
+}
+
+function CorrelationDot({ cx, cy, value }: DotProps) {
+  if (value == null || cx == null || cy == null) return <g />;
+  return <path d={`M${cx} ${cy - 7} L${cx + 6} ${cy} L${cx} ${cy + 7} L${cx - 6} ${cy} Z`} fill={COLORS.correlation} />;
 }
 
 export function LatencyChart({ series, failed = false, alerts, correlations }: LatencyChartProps) {
-  const data = series ? toChartData(series) : [];
-  const byMinute = new Map(data.map((point) => [point.time, point]));
+  const points = series ? toChartData(series) : [];
 
+  // işaretler aynı veri satırlarında ayrı seri, böylece eksen ve tooltip tek veri kümesinden çalışıyor
+  const performanceMinutes = new Set<number>();
+  const correlationMinutes = new Set<number>();
+  const minuteOf = (iso: string) => Math.floor(parseApiDate(iso).getTime() / MINUTE) * MINUTE;
   // korelasyonun parçası olan performans alarmı baklavayla gösteriliyor, ikinci kez daire çizilmiyor
   const correlatedPerformanceIds = new Set(correlations.map((c) => c.performanceAlertId));
-  const performanceMarkers = alerts
+  alerts
     .filter((alert) => alert.type === 'Performans' && !correlatedPerformanceIds.has(alert.alertId))
-    .map((alert) => markerAt(alert.createdAt, byMinute))
-    .filter((marker) => marker !== null);
-  const correlationMarkers = correlations
-    .map((c) => markerAt(c.detectedAt, byMinute))
-    .filter((marker) => marker !== null);
+    .forEach((alert) => performanceMinutes.add(minuteOf(alert.createdAt)));
+  correlations.forEach((c) => correlationMinutes.add(minuteOf(c.detectedAt)));
+
+  // o dakikada veri yoksa işaret de yok
+  const rows = points.map((point) => ({
+    ...point,
+    performanceMarker: performanceMinutes.has(point.time) ? point.latencyMs : null,
+    correlationMarker: correlationMinutes.has(point.time) ? point.latencyMs : null,
+  }));
 
   let body;
   if (failed && !series) {
@@ -54,17 +63,14 @@ export function LatencyChart({ series, failed = false, alerts, correlations }: L
     body = (
       <>
         <ResponsiveContainer width="100%" height={280}>
-          <ComposedChart data={data}>
+          <ComposedChart data={rows}>
             <CartesianGrid {...gridProps} />
             <XAxis
               dataKey="time"
-              type="number"
-              scale="time"
-              domain={['dataMin', 'dataMax']}
-              ticks={fiveMinuteTicks(data)}
+              ticks={fiveMinuteTicks(points)}
               tickFormatter={formatClock}
-              padding={{ left: 8, right: 24 }}
-              minTickGap={24}
+              interval={0}
+              padding={{ left: 8, right: 16 }}
               {...axisProps}
             />
             <YAxis unit="ms" {...axisProps} />
@@ -74,8 +80,24 @@ export function LatencyChart({ series, failed = false, alerts, correlations }: L
               formatter={(value) => [`${value} ms`, 'Ortalama gecikme']}
             />
             <Line type="monotone" dataKey="latencyMs" stroke={COLORS.latency} dot={false} strokeWidth={2} connectNulls={false} />
-            <Scatter data={performanceMarkers} dataKey="latencyMs" fill={COLORS.performanceAnomaly} shape="circle" />
-            <Scatter data={correlationMarkers} dataKey="latencyMs" fill={COLORS.correlation} shape="diamond" />
+            <Line
+              dataKey="performanceMarker"
+              stroke="none"
+              dot={(props: DotProps) => <PerformanceDot key={props.index} {...props} />}
+              activeDot={false}
+              tooltipType="none"
+              isAnimationActive={false}
+              legendType="none"
+            />
+            <Line
+              dataKey="correlationMarker"
+              stroke="none"
+              dot={(props: DotProps) => <CorrelationDot key={props.index} {...props} />}
+              activeDot={false}
+              tooltipType="none"
+              isAnimationActive={false}
+              legendType="none"
+            />
           </ComposedChart>
         </ResponsiveContainer>
         <p className={styles.note}>
