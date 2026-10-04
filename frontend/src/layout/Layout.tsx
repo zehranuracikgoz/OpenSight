@@ -35,8 +35,6 @@ function SettingsIcon() {
 // sol sidebar navigasyonu + üstte ince bir başlık çubuğu - zaman filtresi/servis durumu
 // dashboard'a özgü olduğu için burada değil Dashboard.tsx'in kendi araç çubuğunda
 export function Layout({ children }: LayoutProps) {
-  const environment = import.meta.env.MODE;
-
   return (
     <div className={styles.shell}>
       <aside className={styles.sidebar}>
@@ -64,8 +62,6 @@ export function Layout({ children }: LayoutProps) {
       </aside>
       <div className={styles.mainArea}>
         <header className={styles.topBar}>
-          <span className={styles.scope}>api-gateway/eu-west-1</span>
-          <span className={styles.envBadge}>{environment.toUpperCase()}</span>
           <ThemeToggle />
         </header>
         <main className={styles.content}>{children}</main>
