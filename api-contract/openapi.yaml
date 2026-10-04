@@ -2,12 +2,24 @@ openapi: 3.0.3
 info:
   title: OpenSight API
   version: "0.1.0"
-  description: Mock Open Banking endpoint'leri ile alert ve korelasyon yönetimi.
+  description: >-
+    Mock Open Banking endpoint'leri ile alert ve korelasyon yönetimi.
+    /status ve /settings/* analiz servisinde, /demo/* simülatörde (path bazında server tanımlı).
 
 servers:
   - url: http://localhost:8080
 
 paths:
+  /health:
+    get:
+      summary: Sağlık kontrolü
+      responses:
+        "200":
+          description: Servis ayakta
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+
   /v1/accounts:
     get:
       summary: Hesap listesini döndürür (mock)
@@ -56,6 +68,17 @@ paths:
       responses:
         "201":
           description: Alert oluşturuldu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alertId: { type: string }
+        "400":
+          description: Geçersiz istek
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /api/alerts/summary:
     get:
@@ -72,6 +95,16 @@ paths:
               schema: { $ref: '#/components/schemas/DashboardSummary' }
 
   /api/alerts/correlations:
+    get:
+      summary: Korelasyon olaylarını listeler (değerlendirme betiği ve demo karnesi okur)
+      responses:
+        "200":
+          description: Korelasyon olayları, eskiden yeniye
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CorrelationEventListItem' }
     post:
       summary: Korelasyon olayı oluşturur
       requestBody:
@@ -82,15 +115,36 @@ paths:
       responses:
         "200":
           description: Korelasyon olayı oluşturuldu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  correlationId: { type: string }
+        "400":
+          description: Geçersiz istek
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/alerts/{alertId}:
+    get:
+      summary: Alert detayını döndürür (detay paneli için)
+      parameters:
+        - $ref: '#/components/parameters/AlertId'
+      responses:
+        "200":
+          description: Alert detayı
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertDetail' }
+        "404": { description: Alert bulunamadı }
 
   /api/alerts/{alertId}/acknowledge:
     post:
       summary: Alert'i onaylar
       parameters:
-        - name: alertId
-          in: path
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/AlertId'
       responses:
         "204": { description: Onaylandı }
 
@@ -98,12 +152,141 @@ paths:
     post:
       summary: Alert'i sessize alır
       parameters:
-        - name: alertId
-          in: path
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/AlertId'
       responses:
         "204": { description: Sessize alındı }
+
+  /api/alerts/{alertId}/description:
+    patch:
+      summary: Alert açıklamasını günceller (analiz servisi korelasyon ve Ollama açıklaması için çağırır)
+      parameters:
+        - $ref: '#/components/parameters/AlertId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateAlertDescriptionRequest' }
+      responses:
+        "204": { description: Açıklama güncellendi }
+
+  /status:
+    servers:
+      - url: http://localhost:8001
+        description: Analiz servisi
+    get:
+      summary: Modelin hazır olup olmadığını döndürür (simülatör şüpheli trafiği buna göre başlatır)
+      responses:
+        "200":
+          description: Model ve baseline durumu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalysisStatus' }
+
+  /metrics/latency:
+    servers:
+      - url: http://localhost:8001
+        description: Analiz servisi
+    get:
+      summary: Son N dakikanın dakikalık ortalama gecikmesi ve istek sayısı (bellekten, içinde bulunulan dakika dahil)
+      parameters:
+        - name: minutes
+          in: query
+          description: En fazla 30
+          schema: { type: integer, default: 30 }
+        - name: client_id
+          in: query
+          description: Verilirse sadece o istemci
+          schema: { type: string }
+      responses:
+        "200":
+          description: Dakikalık seri
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LatencySeries' }
+
+  /settings/thresholds:
+    servers:
+      - url: http://localhost:8001
+        description: Analiz servisi
+    get:
+      summary: Z-Score eşiği, contamination oranı ve son 24 saatteki alarm sayılarını döndürür
+      responses:
+        "200":
+          description: Eşik ayarları
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ThresholdSettings' }
+    put:
+      summary: Eşikleri canlı detector'lara uygular ve Redis'e yazar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateThresholdSettingsRequest' }
+      responses:
+        "200":
+          description: Güncel eşik ayarları
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ThresholdSettings' }
+        "422": { description: Geçersiz değer }
+
+  /demo/status:
+    servers:
+      - url: http://localhost:10000
+        description: Simülatör
+    get:
+      summary: Demo durumu, karne ve kalan demo hakkı
+      responses:
+        "200":
+          description: Demo durumu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DemoStatus' }
+
+  /demo/start:
+    servers:
+      - url: http://localhost:10000
+        description: Simülatör
+    post:
+      summary: Canlı demoyu başlatır
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                duration_seconds: { type: number, description: "60 ile en fazla süre arasına çekilir" }
+      responses:
+        "200":
+          description: Demo başladı
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DemoStatus' }
+        "409":
+          description: Zaten çalışıyor, kota dolu veya ölçek uyuşmuyor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /demo/clients:
+    servers:
+      - url: http://localhost:10000
+        description: Simülatör
+    get:
+      summary: İstemcilerin gerçek profil etiketleri (dashboard rozetleri için)
+      responses:
+        "200":
+          description: İstemci -> profil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clients:
+                    type: object
+                    additionalProperties: { type: string, enum: [normal, yogun, supheli] }
 
 components:
   parameters:
@@ -112,8 +295,24 @@ components:
       in: header
       required: true
       schema: { type: string }
+    AlertId:
+      name: alertId
+      in: path
+      required: true
+      schema: { type: string }
 
   schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status: { type: string }
+        service: { type: string }
+
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
     CreateAlertRequest:
       type: object
       required: [clientId, type, severity]
@@ -124,7 +323,7 @@ components:
         description: { type: string, nullable: true }
         zScore: { type: number, nullable: true }
         anomalyScore: { type: number, nullable: true }
-        requestRatePct: { type: number, nullable: true }
+        requestRatePct: { type: number, nullable: true, description: "Aslında req/s" }
         relatedEndpoint: { type: string, nullable: true }
 
     CreateCorrelationEventRequest:
@@ -134,6 +333,12 @@ components:
         performanceAlertId: { type: string }
         behavioralAlertId: { type: string }
 
+    UpdateAlertDescriptionRequest:
+      type: object
+      required: [description]
+      properties:
+        description: { type: string }
+
     AlertListItem:
       type: object
       properties:
@@ -142,6 +347,32 @@ components:
         type: { type: string }
         severity: { type: string }
         createdAt: { type: string, format: date-time }
+
+    AlertDetail:
+      type: object
+      properties:
+        alertId: { type: string }
+        clientId: { type: string }
+        type: { type: string }
+        severity: { type: string }
+        createdAt: { type: string, format: date-time }
+        description: { type: string, nullable: true }
+        zScore: { type: number, nullable: true }
+        anomalyScore: { type: number, nullable: true }
+        requestRatePct: { type: number, nullable: true, description: "Aslında req/s" }
+        relatedEndpoint: { type: string, nullable: true }
+        acknowledged: { type: boolean }
+        silenced: { type: boolean }
+        correlationId: { type: string, nullable: true }
+
+    CorrelationEventListItem:
+      type: object
+      properties:
+        correlationId: { type: string }
+        clientId: { type: string }
+        performanceAlertId: { type: string }
+        behavioralAlertId: { type: string }
+        detectedAt: { type: string, format: date-time }
 
     DashboardSummary:
       type: object
@@ -161,3 +392,87 @@ components:
           type: array
           items: { $ref: '#/components/schemas/AlertListItem' }
         totalCount: { type: integer }
+
+    AnalysisStatus:
+      type: object
+      properties:
+        model_ready: { type: boolean }
+        in_cold_start: { type: boolean }
+        baseline_samples: { type: integer }
+        baseline_scale: { type: number, nullable: true }
+        last_trained_at: { type: string, format: date-time, nullable: true }
+
+    LatencySeries:
+      type: object
+      properties:
+        minutes: { type: integer }
+        client_id: { type: string, nullable: true }
+        points:
+          type: array
+          items:
+            type: object
+            properties:
+              minute: { type: string, format: date-time }
+              avg_latency_ms: { type: number, nullable: true, description: "O dakikada trafik yoksa null" }
+              request_count: { type: integer }
+        average_latency_ms: { type: number, nullable: true, description: "Tüm isteklerin ağırlıklı ortalaması" }
+        request_count: { type: integer }
+
+    ThresholdSettings:
+      type: object
+      properties:
+        z_score_threshold: { type: number }
+        contamination: { type: number }
+        last_trained_at: { type: string, format: date-time, nullable: true }
+        alert_counts_last_24h:
+          type: object
+          additionalProperties: { type: integer }
+
+    UpdateThresholdSettingsRequest:
+      type: object
+      properties:
+        z_score_threshold: { type: number, exclusiveMinimum: true, minimum: 0, nullable: true }
+        contamination: { type: number, exclusiveMinimum: true, minimum: 0, maximum: 0.5, nullable: true }
+
+    DemoStatus:
+      type: object
+      properties:
+        state: { type: string, enum: [bosta, uyaniyor, model_hazirlaniyor, calisiyor, bitti] }
+        remaining_seconds: { type: number, nullable: true }
+        duration_seconds: { type: number, nullable: true }
+        error: { type: string, nullable: true }
+        scorecard: { $ref: '#/components/schemas/DemoScorecard' }
+        scorecard_pending: { type: boolean }
+        daily_remaining: { type: integer, description: "Redis'e ulaşılamazsa gelmez" }
+        daily_limit: { type: integer }
+        monthly_remaining: { type: integer }
+        monthly_limit: { type: integer }
+
+    DemoScorecard:
+      type: object
+      nullable: true
+      description: Sadece o demonun zaman aralığındaki alarmlar, gerçek profillere göre
+      properties:
+        supheli:
+          type: object
+          properties:
+            total: { type: integer }
+            behavioral: { type: integer, description: "Davranışsal alarm alan şüpheli istemci" }
+        yogun:
+          type: object
+          properties:
+            total: { type: integer }
+            performance: { type: integer, description: "Performans alarmı alan yoğun istemci" }
+            behavioral_false: { type: integer, description: "Davranışsal alarm alan yoğun istemci (yanlış)" }
+        normal:
+          type: object
+          properties:
+            total: { type: integer }
+            false_alerts: { type: integer, description: "Normal istemcilere verilen alarm" }
+        correlations:
+          type: object
+          properties:
+            total: { type: integer }
+            supheli: { type: integer }
+            yogun: { type: integer }
+            normal: { type: integer }

@@ -27,30 +27,27 @@ OpenSight is a full-stack observability platform for Open Banking API traffic. I
 
 ## Features
 
-- Traffic simulator with normal, heavy and suspicious client profiles; heavy clients alternate between calm and burst periods
-- Mock Open Banking API whose latency grows with each client's load
-- Real-time performance anomaly detection with a per-client rolling z-score on latency
-- Behavioral anomaly detection with Isolation Forest on three per-client features: request rate, top-endpoint share and average latency
-- Correlation layer that merges performance and behavioral alerts for the same client within a 30-minute window
-- Model baseline built from legitimate traffic and persisted in Redis, so restarts do not require a new cold start
-- Readiness signal: suspicious traffic starts only after the model reports it is trained
-- 5-minute alert cooldown per client and alert type to prevent alert floods
-- Optional Ollama explanations with a 3-second timeout and a rule-based fallback template
-- Dashboard with alert feed, correlated event detail panel and threshold configuration
-- Evaluation script that measures precision, recall and F1 against the simulator's ground-truth labels
+- Traffic simulator with normal, heavy and suspicious client profiles
+- Mock Open Banking API with load-dependent latency, publishing every request to RabbitMQ without waiting
+- Performance anomaly detection with a per-client rolling z-score on latency
+- Behavioral anomaly detection with Isolation Forest on request rate, top-endpoint share and average latency
+- Correlation layer that merges both alert types for the same client into a single event
+- One-click live demo with a scorecard against the simulator's ground-truth labels
+- Dashboard with a real-time latency chart, alert explanations and light/dark themes
+- Evaluation with precision, recall and F1, plus validation on the Kaggle Credit Card Fraud dataset
 
 ---
 
 ## The Process
 
-The project started with a mock Open Banking API whose endpoints publish each request to RabbitMQ in a fire-and-forget way, so the analysis side can never slow down the bank API. A Python simulator generates normal, heavy and suspicious traffic, and the mock API adds latency as a client's request rate rises, so heavy bursts produce real slowdowns. The analysis service consumes the queue, keeps recent requests in Redis and computes a rolling z-score on latency for each client. For behavioral detection, Isolation Forest is trained on a baseline sampled from legitimate (normal and heavy) traffic, so it learns that busy clients are not suspicious by themselves; what stands out is a client that is both fast and concentrated on a single endpoint. The correlation layer checks both alert streams per client and stores alerts and correlated events in PostgreSQL. On a 30-minute evaluation run, the behavioral detector reached 0.86 recall and 0.72 F1, and the performance detector caught 67% of heavy bursts with no false positives on heavy clients. The dashboard uses a warm cream-and-amber theme with monospace numbers for a calm, data-focused look.
+The mock API publishes every request to RabbitMQ without waiting, so the analysis side can never slow down the bank API. The analysis service keeps recent requests in Redis, runs a rolling z-score on latency and an Isolation Forest trained on legitimate traffic, and merges simultaneous alerts for the same client into a correlated event. Since no real bank data was available, a simulator generates labeled traffic; on a 30-minute run the behavioral detector reached 0.86 recall and 0.72 F1, and Isolation Forest was also validated on the Kaggle Credit Card Fraud dataset with a PR-AUC of about 0.17. On the live site, a one-click demo wakes the free-tier services, runs a five-minute scenario and shows a scorecard.
 
 ---
 
 ## Installation
 
 ```bash
-# Full stack (API, analysis service, PostgreSQL, Redis, RabbitMQ, frontend)
+# Full stack (API, analysis service, simulator, PostgreSQL, Redis, RabbitMQ, frontend)
 docker compose up -d
 
 # Database migration
@@ -64,7 +61,7 @@ Dashboard: `http://localhost:8090`
 # Traffic simulator
 cd simulator
 pip install -r requirements.txt
-# .env: SIMULATOR_RATE_SCALE, SIMULATOR_DURATION_SECONDS
+# env: SIMULATOR_RATE_SCALE, SIMULATOR_DURATION_SECONDS, PORT (the compose simulator uses 10000)
 
 python traffic_simulator.py
 ```
@@ -73,7 +70,7 @@ python traffic_simulator.py
 # Frontend (development)
 cd frontend
 npm install
-# .env.local: VITE_API_URL, VITE_ANALYSIS_SERVICE_URL
+# .env.local: VITE_API_URL, VITE_ANALYSIS_SERVICE_URL, VITE_SIMULATOR_URL
 
 npm run dev
 ```
@@ -83,7 +80,7 @@ npm run dev
 cd evaluation
 pip install -r requirements.txt
 
-python evaluate.py
+python evaluate.py --ground-truth-path ../simulator/ground_truth.log
 ```
 
 ### Tests
@@ -130,30 +127,27 @@ OpenSight, Açık Bankacılık API trafiği için geliştirilmiş full-stack bir
 
 ## Özellikler
 
-- Normal, yoğun ve şüpheli istemci profilleri üreten trafik simülatörü; yoğun istemciler sakin ve patlama dönemleri arasında dalgalanır
-- Gecikmesi her istemcinin yüküyle artan mock Open Banking API
-- İstemci bazlı, gecikme üzerinde rolling z-score ile gerçek zamanlı performans anomalisi tespiti
-- Üç istemci bazlı feature üzerinde Isolation Forest ile davranışsal anomali tespiti: istek oranı, en sık endpoint payı ve ortalama gecikme
-- Aynı istemciye ait performans ve davranışsal alertleri 30 dakikalık pencerede birleştiren korelasyon katmanı
-- Meşru trafikten oluşturulan ve Redis'te saklanan model baseline'ı; servis yeniden başladığında yeni bir cold start gerekmez
-- Hazır olma sinyali: şüpheli trafik ancak model eğitildiğini bildirdikten sonra başlar
-- Alert selini önlemek için istemci ve alert türü başına 5 dakikalık cooldown
-- 3 saniyelik timeout ve kural tabanlı şablon fallback'i ile opsiyonel Ollama açıklamaları
-- Alert akışı, korelasyonlu olay detay paneli ve eşik yapılandırması içeren dashboard
-- Simülatörün ground-truth etiketlerine göre precision, recall ve F1 ölçen değerlendirme betiği
+- Normal, yoğun ve şüpheli istemci profilleri üreten trafik simülatörü
+- Gecikmesi yükle artan ve her isteği beklemeden RabbitMQ'ya yayınlayan mock Open Banking API
+- İstemci bazlı, gecikme üzerinde rolling z-score ile performans anomalisi tespiti
+- İstek oranı, en sık endpoint payı ve ortalama gecikme üzerinde Isolation Forest ile davranışsal anomali tespiti
+- Aynı istemcideki iki alarm türünü tek bir olayda birleştiren korelasyon katmanı
+- Simülatörün gerçek etiketlerine göre karne gösteren tek tıklık canlı demo
+- Gerçek zamanlı gecikme grafiği, alarm açıklamaları ve açık/koyu tema içeren dashboard
+- Precision, recall ve F1 ile değerlendirme; ayrıca Kaggle Credit Card Fraud veri setinde doğrulama
 
 ---
 
 ## Süreç
 
-Proje, her isteği fire-and-forget şekilde RabbitMQ'ya yayınlayan mock bir Open Banking API ile başladı; böylece analiz tarafı banka API'sini hiçbir zaman yavaşlatamaz. Python simülatörü normal, yoğun ve şüpheli trafik üretir; mock API ise bir istemcinin istek oranı arttıkça gecikme ekler, böylece yoğun patlamalar gerçek yavaşlamalara yol açar. Analiz servisi kuyruğu tüketir, son istekleri Redis'te tutar ve her istemci için gecikme üzerinde rolling z-score hesaplar. Davranışsal tespit için Isolation Forest, meşru (normal ve yoğun) trafikten örneklenen bir baseline üzerinde eğitilir; böylece yoğun bir istemcinin tek başına şüpheli olmadığını öğrenir. Öne çıkan, hem hızlı hem de tek bir endpoint'e yoğunlaşmış istemcidir. Korelasyon katmanı her istemci için iki alert akışını karşılaştırır, alertleri ve korelasyonlu olayları PostgreSQL'e yazar. 30 dakikalık bir değerlendirme koşusunda davranışsal dedektör 0,86 recall ve 0,72 F1'e ulaştı; performans dedektörü yoğun patlamaların %67'sini yakaladı ve yoğun istemcilerde hiç yanlış alarm üretmedi. Dashboard, sakin ve veri odaklı bir görünüm için sıcak krem-amber bir tema ve monospace sayılar kullanır.
+Mock API her isteği beklemeden RabbitMQ'ya yayınlar; böylece analiz tarafı banka API'sini hiçbir zaman yavaşlatamaz. Analiz servisi son istekleri Redis'te tutar, gecikme üzerinde rolling z-score ve meşru trafikle eğitilmiş bir Isolation Forest çalıştırır, aynı istemcide eş zamanlı oluşan alarmları korelasyonlu bir olayda birleştirir. Gerçek banka verisi olmadığı için bir simülatör etiketli trafik üretir; 30 dakikalık bir koşuda davranışsal dedektör 0,86 recall ve 0,72 F1'e ulaştı, Isolation Forest ayrıca Kaggle Credit Card Fraud veri setinde yaklaşık 0,17 PR-AUC ile doğrulandı. Canlı sitede tek tıklık bir demo ücretsiz katmandaki servisleri uyandırır, beş dakikalık bir senaryo çalıştırır ve bir karne gösterir.
 
 ---
 
 ## Kurulum
 
 ```bash
-# Tüm sistem (API, analiz servisi, PostgreSQL, Redis, RabbitMQ, frontend)
+# Tüm sistem (API, analiz servisi, simülatör, PostgreSQL, Redis, RabbitMQ, frontend)
 docker compose up -d
 
 # Veritabanı migration'ı
@@ -167,7 +161,7 @@ Dashboard: `http://localhost:8090`
 # Trafik simülatörü
 cd simulator
 pip install -r requirements.txt
-# .env: SIMULATOR_RATE_SCALE, SIMULATOR_DURATION_SECONDS
+# env: SIMULATOR_RATE_SCALE, SIMULATOR_DURATION_SECONDS, PORT (compose'daki simülatör 10000'i kullanıyor)
 
 python traffic_simulator.py
 ```
@@ -176,7 +170,7 @@ python traffic_simulator.py
 # Frontend (geliştirme)
 cd frontend
 npm install
-# .env.local: VITE_API_URL, VITE_ANALYSIS_SERVICE_URL
+# .env.local: VITE_API_URL, VITE_ANALYSIS_SERVICE_URL, VITE_SIMULATOR_URL
 
 npm run dev
 ```
@@ -186,7 +180,7 @@ npm run dev
 cd evaluation
 pip install -r requirements.txt
 
-python evaluate.py
+python evaluate.py --ground-truth-path ../simulator/ground_truth.log
 ```
 
 ### Testler
