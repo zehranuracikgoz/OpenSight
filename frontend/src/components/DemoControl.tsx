@@ -99,6 +99,7 @@ export function DemoControl({ onStatusChange }: { onStatusChange?: (status: Demo
 
   return (
     <div className={styles.container}>
+      <div className={styles.row}>
       {apiAwake === false && <span className={styles.waking}>Sistem uyanıyor (~1 dk)…</span>}
       {canStart ? (
         <button className={styles.button} onClick={handleStart} disabled={starting || quotaBlockReason !== null}>
@@ -113,6 +114,8 @@ export function DemoControl({ onStatusChange }: { onStatusChange?: (status: Demo
         </span>
       )}
       {state === 'bitti' && <span className={styles.statusText}>{STATE_LABELS.bitti}</span>}
+      </div>
+      <div className={styles.meta}>
       {quota && (
         <span className= {styles.quota}>
           Bugün kalan: {quota.daily_remaining}/{quota.daily_limit} · Bu ay: {quota.monthly_remaining}/{quota.monthly_limit}
@@ -120,6 +123,7 @@ export function DemoControl({ onStatusChange }: { onStatusChange?: (status: Demo
       )}
       {quotaBlockReason && <span className={styles.error}>{quotaBlockReason}</span>}
       {(startError ?? status?.error) && <span className={styles.error}>{startError ?? status?.error}</span>}
+      </div>
     </div>
   );
 }

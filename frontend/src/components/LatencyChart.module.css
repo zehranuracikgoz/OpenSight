@@ -14,9 +14,17 @@
   color: var(--color-text-primary);
   margin: 0 0 0.75rem 0;
 }
-.mockNote {
+.note {
   margin: 0.25rem 0 0 0;
   font-size: 0.7rem;
   color: var(--color-text-secondary);
   font-style: italic;
+}
+
+.empty {
+  margin: 0;
+  padding: 3rem 0;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
 }

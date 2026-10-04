@@ -1,8 +1,10 @@
 import type {
   AlertDetail,
   ClientProfiles,
+  CorrelationListItem,
   DashboardSummary,
   DemoStatus,
+  LatencySeries,
   PagedAlerts,
   ThresholdSettings,
   UpdateThresholdSettingsPayload,
@@ -52,6 +54,10 @@ export function getDashboardSummary(hours = 24): Promise<DashboardSummary> {
 
 export function getRecentAlerts(take = 50, skip = 0, hours = 24): Promise<PagedAlerts> {
   return getJson<PagedAlerts>(`/api/alerts?take=${take}&skip=${skip}&hours=${hours}`);
+}
+
+export function getCorrelations(): Promise<CorrelationListItem[]> {
+  return getJson<CorrelationListItem[]>('/api/alerts/correlations');
 }
 
 export function getAlertById(alertId: string): Promise<AlertDetail> {
@@ -116,6 +122,11 @@ export async function startDemo(durationSeconds?: number): Promise<DemoStatus> {
     throw new Error(body.error ?? `demo başlatılamadı: ${response.status}`);
   }
   return body;
+}
+
+export function getLatencyMetrics(minutes = 30, clientId?: string): Promise<LatencySeries> {
+  const query = clientId ? `?minutes=${minutes}&client_id=${encodeURIComponent(clientId)}` : `?minutes=${minutes}`;
+  return getAnalysisJson<LatencySeries>(`/metrics/latency${query}`);
 }
 
 export function getThresholdSettings(): Promise<ThresholdSettings> {

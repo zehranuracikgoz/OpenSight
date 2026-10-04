@@ -98,8 +98,8 @@ export function ThresholdConfig() {
           Yüksek değer daha fazla istemciyi şüpheli işaretliyor.
         </p>
         <p className={styles.hint}>
-          Bu değişiklik modelin bir sonraki yeniden eğitiminde etkili olur, mevcut modeli anlık
-          olarak değiştirmez.
+          Kaydedince model, Redis'teki mevcut temiz baseline ile hemen yeniden eğitilir, baseline
+          canlı trafikle güncellenmez.
         </p>
       </div>
 

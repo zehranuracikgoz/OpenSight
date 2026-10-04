@@ -8,9 +8,10 @@ vi.mock('../api/client', () => ({
   getAlertById: vi.fn(),
   acknowledgeAlert: vi.fn(),
   silenceAlert: vi.fn(),
+  getLatencyMetrics: vi.fn(),
 }));
 
-import { acknowledgeAlert, getAlertById, silenceAlert } from '../api/client';
+import { acknowledgeAlert, getAlertById, getLatencyMetrics, silenceAlert } from '../api/client';
 
 const sampleDetail: AlertDetail = {
   alertId: 'alert-1',
@@ -32,6 +33,13 @@ beforeEach(() => {
   vi.mocked(getAlertById).mockResolvedValue(sampleDetail);
   vi.mocked(acknowledgeAlert).mockResolvedValue(undefined);
   vi.mocked(silenceAlert).mockResolvedValue(undefined);
+  vi.mocked(getLatencyMetrics).mockResolvedValue({
+    minutes: 30,
+    client_id: 'client_a',
+    points: [],
+    average_latency_ms: null,
+    request_count: 0,
+  });
 });
 
 describe('CorrelationDetailPanel', () => {

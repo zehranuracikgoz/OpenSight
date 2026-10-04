@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   CartesianGrid,
   Legend,
@@ -9,21 +9,18 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { acknowledgeAlert, getAlertById, silenceAlert } from '../api/client';
-import type { AlertDetail, ClientProfiles } from '../api/types';
-import { buildMockCorrelationSeries } from '../mock/mockCorrelationSeries';
+import { acknowledgeAlert, getAlertById, getLatencyMetrics, silenceAlert } from '../api/client';
+import type { AlertDetail, ClientProfiles, LatencySeries } from '../api/types';
+import { formatClock } from '../time';
 import { axisProps, COLORS, gridProps, legendProps, tooltipProps } from './chartTheme';
 import styles from './CorrelationDetailPanel.module.css';
+import { fiveMinuteTicks, toChartData } from './latencySeries';
 import { ProfileBadge } from './ProfileBadge';
 
 interface CorrelationDetailPanelProps {
   alertId: string;
   onClose: () => void;
   clientProfiles?: ClientProfiles;
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 }
 
 // backend'de açıklama yoksa (Ollama akışı bağlı değil) kural tabanlı şablon metnini burada üretiyor
@@ -42,7 +39,19 @@ export function CorrelationDetailPanel({ alertId, onClose, clientProfiles }: Cor
   const [acknowledged, setAcknowledged] = useState(false);
   const [silenced, setSilenced] = useState(false);
 
-  const series = useMemo(() => buildMockCorrelationSeries(), []);
+  // istemcinin son 30 dakikası, analiz servisine ulaşılamazsa null kalıp boş durum gösteriliyor
+  const [clientSeries, setClientSeries] = useState<LatencySeries | null>(null);
+  const clientId = detail?.clientId;
+
+  useEffect(() => {
+    if (!clientId) return;
+    setClientSeries(null);
+    getLatencyMetrics(30, clientId)
+      .then(setClientSeries)
+      .catch(() => setClientSeries(null));
+  }, [clientId]);
+
+  const chartData = clientSeries ? toChartData(clientSeries) : [];
 
   useEffect(() => {
     setDetail(null);
@@ -87,13 +96,24 @@ export function CorrelationDetailPanel({ alertId, onClose, clientProfiles }: Cor
             </p>
             <div>
               <p className={styles.sectionTitle}>Gecikme + İstek Oranı (son 30 dakika)</p>
+              {clientSeries && clientSeries.request_count > 0 ? (
               <ResponsiveContainer width="100%" height={180}>
-                <LineChart data={series}>
+                <LineChart data={chartData}>
                   <CartesianGrid {...gridProps} />
-                  <XAxis dataKey="timestamp" tickFormatter={formatTime} minTickGap={40} {...axisProps} />
+                  <XAxis
+                    dataKey="time"
+                    type="number"
+                    scale="time"
+                    domain={['dataMin', 'dataMax']}
+                    ticks={fiveMinuteTicks(chartData)}
+                    tickFormatter={formatClock}
+                    padding={{ left: 8, right: 16 }}
+                    minTickGap={24}
+                    {...axisProps}
+                  />
                   <YAxis yAxisId="latency" width={40} {...axisProps} />
                   <YAxis yAxisId="rate" orientation="right" width={30} {...axisProps} />
-                  <Tooltip {...tooltipProps} labelFormatter={(value) => formatTime(String(value))} />
+                  <Tooltip {...tooltipProps} labelFormatter={(value) => formatClock(Number(value))} />
                   <Legend {...legendProps} />
                   <Line
                     yAxisId="latency"
@@ -102,6 +122,7 @@ export function CorrelationDetailPanel({ alertId, onClose, clientProfiles }: Cor
                     name="Gecikme (ms)"
                     stroke={COLORS.latency}
                     dot={false}
+                    connectNulls={false}
                   />
                   <Line
                     yAxisId="rate"
@@ -113,7 +134,9 @@ export function CorrelationDetailPanel({ alertId, onClose, clientProfiles }: Cor
                   />
                 </LineChart>
               </ResponsiveContainer>
-              <p className={styles.mockNote}>grafik şimdilik örnek (mock) veriyle çiziliyor</p>
+              ) : (
+                <p className={styles.chartNote}>Bu istemci için son 30 dakikada veri yok.</p>
+              )}
             </div>
 
             <div>

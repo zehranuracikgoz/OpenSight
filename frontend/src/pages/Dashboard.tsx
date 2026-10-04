@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
-import { getDashboardSummary, getDemoClients, getRecentAlerts } from '../api/client';
-import type { AlertListItem, ClientProfiles, DashboardSummary, DemoStatus } from '../api/types';
+import { getCorrelations, getDashboardSummary, getDemoClients, getLatencyMetrics, getRecentAlerts } from '../api/client';
+import type {
+  AlertListItem,
+  ClientProfiles,
+  CorrelationListItem,
+  DashboardSummary,
+  DemoStatus,
+  LatencySeries,
+} from '../api/types';
 import { AlertsTable } from '../components/AlertsTable';
 import { CorrelationDetailPanel } from '../components/CorrelationDetailPanel';
 import { DemoControl } from '../components/DemoControl';
@@ -39,6 +46,10 @@ export function Dashboard() {
   const [demoStatus, setDemoStatus] = useState<DemoStatus | null>(null);
   const [clientProfiles, setClientProfiles] = useState<ClientProfiles>({});
   const [refreshTick, setRefreshTick] = useState(0);
+  const [latency, setLatency] = useState<LatencySeries | null>(null);
+  const [latencyFailed, setLatencyFailed] = useState(false);
+  const [chartAlerts, setChartAlerts] = useState<AlertListItem[]>([]);
+  const [correlations, setCorrelations] = useState<CorrelationListItem[]>([]);
   const demoState = demoStatus?.state;
   const scorecardPending = demoStatus?.scorecard_pending;
 
@@ -78,6 +89,22 @@ export function Dashboard() {
       })
       .catch(() => setError('Alarm listesi alınamadı - backend çalışıyor mu?'));
   }, [timeRangeHours, page, refreshTick]);
+
+  // gecikme grafiği ve kart son 30 dakika, işaretler son 1 saatin alarm ve korelasyonlarından
+  useEffect(() => {
+    getLatencyMetrics(30)
+      .then((data) => {
+        setLatency(data);
+        setLatencyFailed(false);
+      })
+      .catch(() => setLatencyFailed(true));
+    Promise.all([getRecentAlerts(200, 0, 1), getCorrelations()])
+      .then(([recent, allCorrelations]) => {
+        setChartAlerts(recent.items);
+        setCorrelations(allCorrelations);
+      })
+      .catch(() => {});
+  }, [refreshTick]);
 
   function handleTimeRangeChange(hours: number) {
     setTimeRangeHours(hours);
@@ -127,7 +154,7 @@ export function Dashboard() {
         />
         <MetricCard
           label="Ortalama Gecikme"
-          value={summary && summary.averageLatencyMs > 0 ? `${summary.averageLatencyMs.toFixed(0)} ms` : '—'}
+          value={latency?.average_latency_ms != null ? `${latency.average_latency_ms.toFixed(0)} ms` : '—'}
         />
         <MetricCard
           label="Aktif İstemci"
@@ -140,7 +167,7 @@ export function Dashboard() {
         <DemoScorecard scorecard={demoStatus?.scorecard} pending={Boolean(scorecardPending)} />
       )}
 
-      <LatencyChart />
+      <LatencyChart series={latency} failed={latencyFailed} alerts={chartAlerts} correlations={correlations} />
       <AlertsTable alerts={alerts} onSelectAlert={setSelectedAlertId} clientProfiles={clientProfiles} />
 
       {totalCount > 0 && (

@@ -1,13 +1,17 @@
 .toolbar {
   display: flex;
-  align-items: center;
-  gap:1rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1rem;
   margin-bottom: 1.5rem;
 }
 
 .timeRangeLabel {
+  flex-shrink: 0;
+  margin-left: auto;
   font-size: 0.85rem;
   color: var(--color-text-secondary);
+  white-space: nowrap;
 }
 
 .timeRangeSelect {
@@ -20,7 +24,8 @@
 }
 
 .statusPill {
-  margin-left: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 0.8rem;
   font-weight: 500;
   padding: 0.3rem 0.75rem;

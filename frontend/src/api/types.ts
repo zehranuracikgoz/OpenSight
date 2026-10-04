@@ -79,3 +79,27 @@ export interface DemoScorecard {
 
 //simülatörün gerçek profil etiketi için
 export type ClientProfiles = Record<string, string>;
+
+// analiz servisinin /metrics/latency yanıtı, avg_latency_ms o dakikada trafik yoksa null
+export interface LatencyPoint {
+  minute: string;
+  avg_latency_ms: number | null;
+  request_count: number;
+}
+
+export interface LatencySeries {
+  minutes: number;
+  client_id: string | null;
+  points: LatencyPoint[];
+  average_latency_ms: number | null;
+  request_count: number;
+}
+
+// backend'in CorrelationEventListItemDto'suyla eşleşiyor
+export interface CorrelationListItem {
+  correlationId: string;
+  clientId: string;
+  performanceAlertId: string;
+  behavioralAlertId: string;
+  detectedAt: string;
+}

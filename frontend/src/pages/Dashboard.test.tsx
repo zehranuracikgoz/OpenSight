@@ -7,6 +7,8 @@ vi.mock('../api/client', () => ({
   getDashboardSummary: vi.fn(),
   getRecentAlerts: vi.fn(),
   getDemoClients: vi.fn(),
+  getLatencyMetrics: vi.fn(),
+  getCorrelations: vi.fn(),
   getDemoStatus: vi.fn(),
   getAlertById: vi.fn(),
   checkApiAwake: vi.fn(),
@@ -14,7 +16,15 @@ vi.mock('../api/client', () => ({
 }));
 vi.mock('../components/LatencyChart', () => ({ LatencyChart: () => null }));
 
-import { checkApiAwake, getDashboardSummary, getDemoClients, getDemoStatus, getRecentAlerts } from '../api/client';
+import {
+  checkApiAwake,
+  getCorrelations,
+  getDashboardSummary,
+  getDemoClients,
+  getDemoStatus,
+  getLatencyMetrics,
+  getRecentAlerts,
+} from '../api/client';
 
 const summary: DashboardSummary ={
   activeAlertCount: 1,
@@ -42,6 +52,14 @@ beforeEach(() => {
   vi.mocked(getDemoClients).mockResolvedValue({ client_supheli_0000: 'supheli' });
   vi.mocked(getDemoStatus).mockResolvedValue(demo({}));
   vi.mocked(checkApiAwake).mockResolvedValue(true) ;
+  vi.mocked(getLatencyMetrics).mockResolvedValue({
+    minutes: 30,
+    client_id: null,
+    points: [],
+    average_latency_ms: null,
+    request_count: 0,
+  });
+  vi.mocked(getCorrelations).mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -113,7 +131,13 @@ describe('Dashboard', () => {
   });
 
   it('gecikme verisi varsa ortalamayı ms olarak gösteriyor', async () => {
-    vi.mocked(getDashboardSummary).mockResolvedValue({ ...summary, averageLatencyMs: 87.4 });
+    vi.mocked(getLatencyMetrics).mockResolvedValue({
+      minutes: 30,
+      client_id: null,
+      points: [],
+      average_latency_ms: 87.4,
+      request_count: 120,
+    });
     render(<Dashboard />);
 
     expect(await screen.findByText('87 ms')).toBeInTheDocument();
