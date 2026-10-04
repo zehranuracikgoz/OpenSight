@@ -53,6 +53,9 @@ export function DemoScorecard({ scorecard, pending }: DemoScorecardProps) {
             Sadece bu demonun zaman aralığındaki alarmlar sayıldı; profiller simülatörün gerçek etiketleri. Yoğun
             istemciler meşru kullanıcı, o yüzden onlara verilen davranışsal alarm yanlış pozitif sayılıyor.
           </p>
+          <p className={styles.note}>
+            5 dakikalık demo kısa bir örnektir; sonuçlar demodan demoya değişebilir. Ayrıntılı değerlendirme raporda.
+          </p>
         </>
       )}
     </section>

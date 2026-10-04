@@ -67,12 +67,15 @@ DEFAULT_DEMO_DURATION_SECONDS = 300.0
 DEFAULT_DEMO_MAX_DURATION_SECONDS = 300.0
 DEFAULT_DEMO_COOLDOWN_SECONDS = 600.0
 DEFAULT_DEMO_DAILY_LIMIT = 3
-# ölçüm: demo başına ~22K Redis komutu (pipeline MULTI/EXEC de sayılıyor) - 20/ay güvenli, 35 taşardı
-DEFAULT_DEMO_MONTHLY_LIMIT = 20
+# ölçüm: demo başına ~25K Redis komutu (ısınma dahil 500K sınırında en fazla 16-17 demo), 20 taşardı
+DEFAULT_DEMO_MONTHLY_LIMIT = 16
 DEFAULT_DEMO_WAKE_TIMEOUT_SECONDS = 90.0
 DEFAULT_DEMO_KEEPALIVE_INTERVAL_SECONDS = 300.0
 # demo bitince analiz kuyruğunun boşalması ve korelasyonun yazılması için bekleme
-DEFAULT_DEMO_SCORECARD_GRACE_SECONDS = 90.0
+DEFAULT_DEMO_SCORECARD_GRACE_SECONDS = 120.0
+# demoda yoğun patlamaları erken başlıyor ve 5 dakikaya en az iki patlama sığıyor (değerlendirme koşusunda değişmiyor)
+DEFAULT_DEMO_BURST_FIRST_RANGE = (60.0, 90.0)
+DEFAULT_DEMO_BURST_INTERVAL_RANGE = (80.0, 100.0)
 
 # cold_start.py'deki BASELINE_SCALE_KEY/SIMULATOR_ACTIVE_SCALE_KEY ile aynı olmalı
 BASELINE_SCALE_KEY = "behavioral:baseline:scale"
@@ -109,6 +112,16 @@ def demo_wake_timeout() -> float:
 
 def demo_scorecard_grace() -> float:
     return float(os.environ.get("SIMULATOR_DEMO_SCORECARD_GRACE", str(DEFAULT_DEMO_SCORECARD_GRACE_SECONDS)))
+
+
+def demo_burst_first_range() -> tuple[float, float]:
+    text = os.environ.get("SIMULATOR_DEMO_BURST_FIRST")
+    return parse_rate_range(text) if text else DEFAULT_DEMO_BURST_FIRST_RANGE
+
+
+def demo_burst_interval_range() -> tuple[float, float]:
+    text = os.environ.get("SIMULATOR_DEMO_BURST_INTERVAL")
+    return parse_rate_range(text) if text else DEFAULT_DEMO_BURST_INTERVAL_RANGE
 
 
 def demo_keepalive_interval() -> float:
@@ -267,16 +280,22 @@ class YogunBurstRateProvider:
     """yoğun profilin sakin<->patlama arasında salındığı hız sağlayıcısı - her çağrıldığında
     güncel hızı döndürüyor, faz değişince on_transition(in_burst) çağrılıyor"""
 
-    def __init__(self, on_transition: Callable[[bool], None] | None = None) -> None:
+    def __init__(
+        self,
+        on_transition: Callable[[bool], None] | None = None,
+        first_interval_range: tuple[float, float] | None = None,
+        interval_range: tuple[float, float] | None = None,
+    ) -> None:
+        # first_interval_range ve interval_range sadece demo modunda veriliyor, yoksa env/varsayılan geçerli
         self._scale = rate_scale()
         self._calm_range = rate_range_for(Profile.YOGUN)
         self._burst_range = burst_rate_range()
         self._duration_range = burst_duration_range()
-        self._interval_range = burst_interval_range()
+        self._interval_range = interval_range or burst_interval_range()
         self._on_transition = on_transition
         self._in_burst = False
         self._current_rate = self._draw_calm()
-        self._next_transition = time.monotonic() + random.uniform(*self._interval_range)
+        self._next_transition = time.monotonic() + random.uniform(*(first_interval_range or self._interval_range))
 
     def _draw_calm(self) -> float:
         return max(random.uniform(*self._calm_range) * self._scale, MIN_RATE)
@@ -308,7 +327,9 @@ class TrafficSimulator:
         ready_timeout: float = DEFAULT_READY_TIMEOUT_SECONDS,
         ready_poll_seconds: float = DEFAULT_READY_POLL_SECONDS,
         burst_log_path: str | None = None,
+        burst_timing: tuple[tuple[float, float], tuple[float, float]] | None = None,
     ):
+        self.burst_timing = burst_timing  # (ilk patlama, sakin aralık) sadece demo modunda
         self.base_url = base_url.rstrip("/")
         self.ground_truth_path = ground_truth_path
         self.burst_log_path = burst_log_path or (ground_truth_path + ".burst")
@@ -390,8 +411,13 @@ class TrafficSimulator:
         for profile in Profile:
             for i in range(n_clients_per_profile):
                 client_id = make_client_id(profile, i)
+                first_range, interval_range = self.burst_timing or (None, None)
                 rate_fn = (
-                    YogunBurstRateProvider(on_transition=lambda in_burst, cid=client_id: self.log_burst_event(cid, in_burst))
+                    YogunBurstRateProvider(
+                        on_transition=lambda in_burst, cid=client_id: self.log_burst_event(cid, in_burst),
+                        first_interval_range=first_range,
+                        interval_range=interval_range,
+                    )
                     if profile is Profile.YOGUN
                     else constant_rate(request_rate_for(profile))
                 )
@@ -580,6 +606,7 @@ class DemoController:
         sim = TrafficSimulator(
             self.base_url, ground_truth_path=os.devnull, analysis_url=self.analysis_url,
             ready_timeout=demo_wake_timeout() * 10,  # cold start uzun sürebilir, sabırlı ol
+            burst_timing=(demo_burst_first_range(), demo_burst_interval_range()),
         )
         with self._lock:
             self._sim = sim
