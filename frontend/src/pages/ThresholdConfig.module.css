@@ -29,6 +29,15 @@
   font-size: 0.9rem;
 }
 
+.readOnlyNote {
+  margin: 0;
+  padding: 0.85rem 1.1rem;
+  background-color: var(--color-nav-hover-bg);
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -101,6 +110,13 @@
   color: var(--color-button-secondary-text);
   font-size: 0.9rem;
   cursor: pointer;
+}
+
+.saveButton:disabled,
+.resetButton:disabled,
+.slider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .slider {

@@ -75,6 +75,8 @@ services:
       OLLAMA_URL: "http://ollama:11434/api/generate"
       OLLAMA_MODEL: "llama3.2:1b"
       DASHBOARD_ORIGIN: "http://localhost:8090"
+      # yerelde debug uçları açık, canlıda varsayılan kapalı
+      ENABLE_DEBUG_ENDPOINTS: "true"
 
   simulator:
     build:

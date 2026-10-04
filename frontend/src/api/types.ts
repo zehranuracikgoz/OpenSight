@@ -47,6 +47,7 @@ export interface ThresholdSettings {
   contamination:number;
   last_trained_at: string | null;
   alert_counts_last_24h: Record<string, number>;
+  read_only?: boolean;
 }
 
 export interface UpdateThresholdSettingsPayload {

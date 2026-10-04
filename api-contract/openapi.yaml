@@ -229,6 +229,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ThresholdSettings' }
+        "403": { description: Ortamda ayarlar salt okunur (SETTINGS_READ_ONLY) }
         "422": { description: Geçersiz değer }
 
   /demo/status:
@@ -427,6 +428,7 @@ components:
         alert_counts_last_24h:
           type: object
           additionalProperties: { type: integer }
+        read_only: { type: boolean, description: "true ise PUT 403 döner" }
 
     UpdateThresholdSettingsRequest:
       type: object

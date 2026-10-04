@@ -14,7 +14,7 @@ from dataclasses import asdict
 # basicConfig olmadan logger.info(...) hiçbir yere yazılmıyordu - Render'da RabbitMQ bağlantı logu yokluğu buydu
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from redis import Redis
@@ -49,6 +49,11 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:1b")
 
 app = FastAPI(title="OpenSight Analiz Servisi", version="0.1.0")
+
+
+def _env_flag(name: str) -> bool:
+    """her istekte okunuyor, canlıda env değişince yeniden başlatma dışında kod değişmesin"""
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 # dashboard'un dogrudan tarayicidan (fetch ile) esik ayarlari endpoint'lerine erisebilmesi icin -
 # backend'deki Cors:DashboardOrigin yaklasimiyla ayni mantik
@@ -134,9 +139,11 @@ class LatencySample(BaseModel):
     latency_ms: float
 
 
-@app.post("/debug/score-latency")
+@app.post("/debug/score-latency", include_in_schema=False)
 def score_latency(sample: LatencySample) -> dict:
-    """gerçek RabbitMQ akışı olmadan rolling z-score'u test etmek için"""
+    """gerçek RabbitMQ akışı olmadan rolling z-score'u test etmek için, ENABLE_DEBUG_ENDPOINTS=true değilse 404"""
+    if not _env_flag("ENABLE_DEBUG_ENDPOINTS"):
+        raise HTTPException(status_code=404, detail="Not Found")
     result = performance_detector.update_and_score(sample.client_id, sample.latency_ms)
     return {
         "z_score": result.z_score,
@@ -151,6 +158,7 @@ class ThresholdSettingsResponse(BaseModel):
     contamination: float
     last_trained_at: str | None
     alert_counts_last_24h: dict[str, int]
+    read_only: bool = False
 
 
 class UpdateThresholdSettingsRequest(BaseModel):
@@ -161,11 +169,15 @@ class UpdateThresholdSettingsRequest(BaseModel):
 @app.get("/settings/thresholds", response_model=ThresholdSettingsResponse)
 def get_threshold_settings()-> ThresholdSettingsResponse:
     """Z-Score eşiğini, contamination oranını, son 24 saatteki alarm sayısını ve son eğitim zamanını döndürüyor"""
-    return ThresholdSettingsResponse(**asdict(threshold_settings.get_settings()))
+    return ThresholdSettingsResponse(
+        **asdict(threshold_settings.get_settings()), read_only=_env_flag("SETTINGS_READ_ONLY")
+    )
 
 
 @app.put("/settings/thresholds", response_model=ThresholdSettingsResponse)
 def update_threshold_settings(request: UpdateThresholdSettingsRequest) -> ThresholdSettingsResponse:
-    """yeni eşikleri canlı detector'lara uyguluyor ve Redis'e kalıcı olarak yazıyor"""
+    """yeni eşikleri canlı detector'lara uyguluyor ve Redis'e kalıcı olarak yazıyor, SETTINGS_READ_ONLY=true ise 403"""
+    if _env_flag("SETTINGS_READ_ONLY"):
+        raise HTTPException(status_code=403, detail="Bu ortamda ayarlar salt okunur (SETTINGS_READ_ONLY), değiştirilemez.")
     settings = threshold_settings.update_settings(request.z_score_threshold, request.contamination)
-    return ThresholdSettingsResponse(**asdict(settings ))
+    return ThresholdSettingsResponse(**asdict(settings), read_only=False)

@@ -37,7 +37,8 @@ async function putAnalysisJson<T> (path: string, payload: unknown): Promise<T> {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error(`${path} isteği başarısız oldu: ${response.status}`);
+    // 403 (salt okunur ortam) ayarlar sayfasında ayırt edilebilsin diye status taşınıyor
+    throw Object.assign(new Error(`${path} isteği başarısız oldu: ${response.status}`), { status: response.status });
   }
   return (await response.json()) as T;
 }

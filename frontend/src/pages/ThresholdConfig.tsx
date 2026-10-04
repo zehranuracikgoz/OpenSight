@@ -18,11 +18,13 @@ export function ThresholdConfig() {
   const [contamination, setContamination] = useState(DEFAULT_CONTAMINATION);
   const [error, setError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const [readOnly, setReadOnly] = useState(false);
 
   useEffect(() => {
     getThresholdSettings()
       .then((data) => {
         setSettings(data);
+        setReadOnly(data.read_only === true);
         setZScoreThreshold(data.z_score_threshold);
         setContamination(data.contamination);
       })
@@ -39,7 +41,12 @@ export function ThresholdConfig() {
       });
       setSettings(updated);
       setSavedMessage('Değişiklikler kaydedildi.');
-    } catch {
+    } catch (err) {
+      // salt okunur ortamda 403 geliyor, hata yerine not gösteriliyor
+      if ((err as { status?: number }).status === 403) {
+        setReadOnly(true);
+        return;
+      }
       setError ('Ayarlar kaydedilemedi - analiz servisi çalışıyor mu?');
     }
   }
@@ -55,6 +62,7 @@ export function ThresholdConfig() {
       <h2 className={styles.title}>Eşik Değerleri Yapılandırma</h2>
 
       {error && <p className={styles.error}>{error}</p>}
+      {readOnly && <p className={styles.readOnlyNote}>Canlı demoda ayarlar salt okunurdur.</p>}
       {savedMessage && <p className={styles.saved}>{savedMessage}</p>}
 
       <div className={styles.field}>
@@ -70,6 +78,7 @@ export function ThresholdConfig() {
           max={6}
           step={0.1}
           value={zScoreThreshold}
+          disabled={readOnly}
           onChange={(e) => setZScoreThreshold(Number(e.target.value))}
         />
         <p className={styles.hint}>
@@ -91,6 +100,7 @@ export function ThresholdConfig() {
           max = {0.5}
           step={0.005}
           value={contamination}
+          disabled={readOnly}
           onChange={(e) => setContamination(Number(e.target.value))}
         />
         <p className={styles.hint}>
@@ -117,10 +127,10 @@ export function ThresholdConfig() {
       </div>
 
       <div className={styles.actions}>
-        <button className={styles.saveButton} onClick={handleSave}>
+        <button className={styles.saveButton} onClick={handleSave} disabled={readOnly}>
           Değişiklikleri Kaydet
         </button>
-        <button className={styles.resetButton} onClick={handleReset}>
+        <button className={styles.resetButton} onClick={handleReset} disabled={readOnly}>
           Varsayılana Dön
           
         </button>

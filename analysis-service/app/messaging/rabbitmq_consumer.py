@@ -11,6 +11,7 @@ import time
 
 import pika
 
+from app.log_utils import mask_uri
 from app.services.anomaly_pipeline import AnomalyPipeline
 
 logger = logging.getLogger("opensight.consumer")
@@ -46,7 +47,7 @@ class RabbitMqTrafficConsumer:
                     break
                 logger.warning(
                     "RabbitMQ bağlantısı kurulamadı/koptu (%s), %ss sonra tekrar denenecek",
-                    exc, RECONNECT_DELAY_SECONDS,
+                    mask_uri(str(exc)), RECONNECT_DELAY_SECONDS,
                 )
                 time.sleep(RECONNECT_DELAY_SECONDS)
 
@@ -66,7 +67,7 @@ class RabbitMqTrafficConsumer:
 
             logger.info(
                 "RabbitMQ'ya bağlandı (%s), %s exchange'i dinleniyor",
-                self.uri or self.host, EXCHANGE_NAME,
+                mask_uri(self.uri) if self.uri else self.host, EXCHANGE_NAME,
             )
             channel.basic_consume(queue=queue_name, on_message_callback=self._on_message, auto_ack=True)
             channel.start_consuming()
