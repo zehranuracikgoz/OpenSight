@@ -32,3 +32,6 @@ docs/
 postman/
 scripts/
 evaluation/results/
+# kaggle deneyi: veri seti ve sonuçlar
+evaluation/kaggle/creditcard.csv
+evaluation/kaggle/results/
